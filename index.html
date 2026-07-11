@@ -1456,7 +1456,8 @@ async function _igdbFallback(action,params){
             var sd=await sr.json();
             var seed=sd&&sd[0];
             if(!seed||!seed.genres||!seed.genres.length)return{results:[]};
-            body='fields name,cover.image_id,first_release_date,platforms.name,rating; where genres = ('+seed.genres.slice(0,2).join(',')+') & cover != null; sort rating desc; limit '+(params.limit||12)+';';
+            var igdbPlatIds=(params.platforms||'').split(',').filter(Boolean).map(function(lbl){return IGDB_PLAT_MAP[lbl];}).filter(Boolean);
+            body='fields name,cover.image_id,first_release_date,platforms.name,rating; where genres = ('+seed.genres.slice(0,2).join(',')+')'+(igdbPlatIds.length?' & platforms = ('+igdbPlatIds.join(',')+')':'')+' & cover != null; sort rating desc; limit '+(params.limit||12)+';';
         }else return null;
         var r=await fetch(PROXY_ORIGIN+'/igdb/games',{method:'POST',headers:{'Client-ID':auth.cid,'Authorization':'Bearer '+auth.token},body:body});
         if(!r.ok)return null;
@@ -1501,7 +1502,8 @@ async function _igdbPost(action,params,_retry){
             if(!seed){clearTimeout(tid);return{results:[]};}
             seedName=params.gameName;
             var genreSlugs=(seed.genres||[]).map(function(g){return g.slug;}).slice(0,2).join(',');
-            url='https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games?key='+encodeURIComponent(key)+'&genres='+encodeURIComponent(genreSlugs)+'&page_size='+(params.limit||12)+'&ordering=-rating';
+            var platIds=(params.platforms||'').split(',').filter(Boolean).map(function(lbl){var p=RAWG_PLATFORMS.find(function(rp){return rp.label===lbl;});return p?p.id:null;}).filter(Boolean);
+            url='https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games?key='+encodeURIComponent(key)+'&genres='+encodeURIComponent(genreSlugs)+(platIds.length?'&platforms='+platIds.join(','):'')+'&page_size='+(params.limit||12)+'&ordering=-rating';
         }else{clearTimeout(tid);return null;}
         var r=await fetch(url,{signal:ctrl.signal});
         clearTimeout(tid);
@@ -1828,7 +1830,7 @@ async function exploreByGenre(idx){
 }
 
 function renderExploreGenreResults(el,results,label){
-    if(!results.length){el.innerHTML='<div style="padding:1rem;text-align:center;color:var(--text3);font-size:0.82rem">Sin resultados</div>';return;}
+    if(!results.length){el.innerHTML='<div style="padding:1rem;text-align:center;color:var(--text3);font-size:0.82rem">Sin resultados'+(window._lastIgdbErr?'<br><span style="color:var(--red);font-size:0.7rem">Debug: '+escHtml(window._lastIgdbErr)+'</span>':'')+'</div>';return;}
     var plusSvg='<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
     var grouped=_groupDlcs(results);
     var cards='';
