@@ -1173,7 +1173,7 @@ function getMyConsoles(){
 function saveMyConsoles(s){
     var arr=Array.from(s);
     localStorage.setItem(CONSOLES_K,JSON.stringify(arr));
-    if(_userProfile){_userProfile.consoles=arr;_debounceSaveProfile();}
+    if(_userProfile){_userProfile.consoles=arr;if(_profileSaveTimer){clearTimeout(_profileSaveTimer);_profileSaveTimer=null;}_saveUserProfile();}
 }
 function renderConsolesGrid(){
     var el=document.getElementById('sConsolesGrid');if(!el)return;
