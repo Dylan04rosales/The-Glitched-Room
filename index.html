@@ -1790,7 +1790,7 @@ async function loadExplorePlatform(platLabel){
 function renderExplorePlatResults(el,results,platLabel){
     var plusSvg='<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
     var grouped=_groupDlcs(results);
-    if(!grouped.length){el.innerHTML='<div style="text-align:center;padding:2rem;color:var(--text3);font-size:0.82rem">No se encontraron juegos para '+escHtml(platLabel)+'</div>';return;}
+    if(!grouped.length){el.innerHTML='<div style="text-align:center;padding:2rem;color:var(--text3);font-size:0.82rem">No se encontraron juegos para '+escHtml(platLabel)+(window._lastIgdbErr?'<br><span style="color:var(--red);font-size:0.7rem">Debug: '+escHtml(window._lastIgdbErr)+'</span>':'')+'</div>';return;}
     var h='<div class="explore-grid">';
     for(var i=0;i<grouped.length;i++)h+=_renderExploreCard(grouped[i].game,grouped[i].dlcs,plusSvg);
     h+='</div>';
@@ -2072,7 +2072,7 @@ async function loadExploreRecs(el){
     }
     allRecs.sort(function(a,b){return(b.metacritic||0)-(a.metacritic||0)||(b.userRating||0)-(a.userRating||0);});
     _exploreRecsLoading=false;
-    if(!allRecs.length){el.innerHTML='<div style="padding:2rem;text-align:center;color:var(--text3);font-size:0.82rem">No se encontraron recomendaciones. Intentá de nuevo más tarde.</div>';return;}
+    if(!allRecs.length){el.innerHTML='<div style="padding:2rem;text-align:center;color:var(--text3);font-size:0.82rem">No se encontraron recomendaciones. Intentá de nuevo más tarde.'+(window._lastIgdbErr?'<br><span style="color:var(--red);font-size:0.7rem">Debug: '+escHtml(window._lastIgdbErr)+'</span>':'')+'</div>';return;}
     var plusSvg='<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
     var groups={};
     for(var gi=0;gi<allRecs.length;gi++){var r=allRecs[gi];if(!groups[r.basedOn])groups[r.basedOn]=[];groups[r.basedOn].push(r);}
