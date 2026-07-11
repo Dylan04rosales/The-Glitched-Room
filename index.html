@@ -4364,6 +4364,7 @@ async function searchRAWG(inputId,resultsId,btnId){
     try{
         var data=await _igdbPost('igdb_search',{query:q,limit:'12'});
         if(data&&data.results&&data.results.length)results=data.results;
+        else if(window._lastIgdbErr)errMsg=window._lastIgdbErr;
     }catch(e){errMsg=e.message||'Error de conexion';}
     if(!results){
         try{
