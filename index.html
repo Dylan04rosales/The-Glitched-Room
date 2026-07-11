@@ -1460,12 +1460,13 @@ async function _igdbPost(action,params,_retry){
         }else{clearTimeout(tid);return null;}
         var r=await fetch(url,{signal:ctrl.signal});
         clearTimeout(tid);
-        if(!r.ok)return null;
+        if(!r.ok){var et=await r.text().catch(function(){return'';});window._lastIgdbErr='HTTP '+r.status+' '+et.slice(0,200);return null;}
         var data=await r.json();
         var results=(data.results||[]).map(_rawgToCard);
         if(seedName){var sl=seedName.toLowerCase();results=results.filter(function(g){return g.name.toLowerCase()!==sl;});}
+        window._lastIgdbErr=null;
         return{results:results};
-    }catch(e){clearTimeout(tid);return null;}
+    }catch(e){clearTimeout(tid);window._lastIgdbErr=(e&&e.message)||String(e);return null;}
 }
 function _proxyPost(action,params){
 if(!PROXY_BASE)return Promise.resolve(null);
@@ -2039,7 +2040,7 @@ function exploreSearch(){
         if(!data||!data.results||!data.results.length){
             _searchFallback(q).then(function(fb){
                 if(fb&&fb.length)renderExploreSearchResults(el,fb,q);
-                else el.innerHTML='<div style="padding:1rem;text-align:center;color:var(--text3);font-size:0.82rem">Sin resultados para "'+escHtml(q)+'"</div>';
+                else el.innerHTML='<div style="padding:1rem;text-align:center;color:var(--text3);font-size:0.82rem">Sin resultados para "'+escHtml(q)+'"'+(window._lastIgdbErr?'<br><span style="color:var(--red);font-size:0.7rem">Debug: '+escHtml(window._lastIgdbErr)+'</span>':'')+'</div>';
             });
             return;
         }
