@@ -1428,7 +1428,7 @@ function _igdbTimestampToYear(ts){return ts?new Date(ts*1000).getFullYear():0;}
 function _igdbToCard(g){
     var cover=g.cover&&g.cover.image_id?('https://images.igdb.com/igdb/image/upload/t_1080p/'+g.cover.image_id+'.jpg'):'';
     var platList=(g.platforms||[]).map(function(p){return p.name;});
-    return{name:g.name,cover:cover,metacritic:0,year:_igdbTimestampToYear(g.first_release_date),platforms:platList.join(', '),platList:platList,userRating:g.rating?Math.round(g.rating):0,rawgId:0};
+    return{id:'igdb_'+(g.id||g.name),name:g.name,cover:cover,metacritic:0,year:_igdbTimestampToYear(g.first_release_date),platforms:platList.join(', '),platList:platList,userRating:g.rating?Math.round(g.rating):0,rawgId:0};
 }
 async function _igdbFallback(action,params){
     var auth=await getIGDBToken();
@@ -1466,6 +1466,7 @@ async function _igdbFallback(action,params){
     }catch(e){return null;}
 }
 var PROXY_ORIGIN='https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev';
+var RAWG_PROXY_BASE=PROXY_ORIGIN+'/rawg';
 var _RAWG_NAME_TO_LABEL=null;
 function _rawgPlatformLabel(name){
     if(!_RAWG_NAME_TO_LABEL){_RAWG_NAME_TO_LABEL={};RAWG_PLATFORMS.forEach(function(p){_RAWG_NAME_TO_LABEL[p.name]=p.label;});}
@@ -1473,7 +1474,7 @@ function _rawgPlatformLabel(name){
 }
 function _rawgToCard(g){
     var platList=(g.platforms||[]).map(function(p){return _rawgPlatformLabel(p.platform.name);});
-    return{name:g.name,cover:g.background_image||'',metacritic:g.metacritic||0,year:g.released?parseInt(g.released.slice(0,4),10):0,platforms:platList.join(', '),platList:platList,userRating:g.rating?Math.round(g.rating*20):0,rawgId:g.id};
+    return{id:g.id,name:g.name,cover:g.background_image||'',metacritic:g.metacritic||0,year:g.released?parseInt(g.released.slice(0,4),10):0,platforms:platList.join(', '),platList:platList,userRating:g.rating?Math.round(g.rating*20):0,rawgId:g.id};
 }
 async function _igdbPost(action,params,_retry){
     var key=gk('rawg');
@@ -1760,27 +1761,26 @@ function renderExplorePlat(el){
     loadExplorePlatform(platLabel);
 }
 
+var EXPLORE_PLATFORM_IDS={'PlayStation':[187,18,16,15,27,17,19],'Xbox':[186,1,14],'Nintendo':[7,10,8,11,105,83,79,49],'PC / Steam':[4]};
 async function loadExplorePlatform(platLabel){
     var el=document.getElementById('explorePlatContent');if(!el)return;
     var ck='plat_'+platLabel;
     if(_exploreCache[ck]){renderExplorePlatResults(el,_exploreCache[ck],platLabel);return;}
-    var plat=EXPLORE_PLATFORMS.find(function(p){return p.label===platLabel;});
-    if(!plat){el.innerHTML='<div style="padding:2rem;text-align:center;color:var(--text3)">Plataforma no disponible</div>';return;}
+    var ids=EXPLORE_PLATFORM_IDS[platLabel];
+    if(!ids){el.innerHTML='<div style="padding:2rem;text-align:center;color:var(--text3)">Plataforma no disponible</div>';return;}
     el.innerHTML='<div style="padding:2rem;text-align:center;color:var(--text3);font-size:0.82rem"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 0.5rem"></div>Cargando juegos de '+escHtml(platLabel)+'...</div>';
     try{
-        var all=[];var seen=new Set();
-        var seeds=plat.seeds||[];
-        for(var si=0;si<seeds.length&&all.length<30;si++){
-            try{
-                var sd=await _proxyPost(plat.store,{gameName:seeds[si]});
-                if(sd&&sd.covers){
-                    for(var ci=0;ci<sd.covers.length&&all.length<30;ci++){
-                        var c=sd.covers[ci];if(!c.name)continue;
-                        var k=c.name.toLowerCase();if(seen.has(k))continue;seen.add(k);
-                        all.push({name:c.name,cover:c.url||c.thumb||'',platforms:c.platform||platLabel,year:0,metacritic:0,userRating:0});
-                    }
-                }
-            }catch(e2){}
+        var all=[];
+        var key=gk('rawg');
+        if(key){
+            var url=RAWG_PROXY_BASE+'/games?key='+encodeURIComponent(key)+'&platforms='+ids.join(',')+'&page_size=30&ordering=-added';
+            var r=await fetch(url);
+            if(r.ok){var data=await r.json();all=(data.results||[]).map(_rawgToCard);}
+        }
+        if(!all.length){
+            var pl=RAWG_PLATFORMS.find(function(p){return ids.indexOf(p.id)>=0;});
+            var fb=await _igdbFallback('igdb_catalog',{platform:pl?pl.label:'',limit:'30'});
+            if(fb&&fb.results)all=fb.results;
         }
         _exploreCache[ck]=all;
         renderExplorePlatResults(el,all,platLabel);
