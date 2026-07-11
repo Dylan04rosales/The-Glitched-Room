@@ -1423,6 +1423,49 @@ if(_fromGestion){_fromGestion=false;closeDatosSheet();renderGestion();}else{open
 else{showToast('Error al subir la portada','error');}
 }
 var _proxyCache={};
+var IGDB_MODE_MAP={singleplayer:1,splitscreen:4,coop:3,'multiplayer-online':2,mmo:5};
+function _igdbTimestampToYear(ts){return ts?new Date(ts*1000).getFullYear():0;}
+function _igdbToCard(g){
+    var cover=g.cover&&g.cover.image_id?('https://images.igdb.com/igdb/image/upload/t_1080p/'+g.cover.image_id+'.jpg'):'';
+    var platList=(g.platforms||[]).map(function(p){return p.name;});
+    return{name:g.name,cover:cover,metacritic:0,year:_igdbTimestampToYear(g.first_release_date),platforms:platList.join(', '),platList:platList,userRating:g.rating?Math.round(g.rating):0,rawgId:0};
+}
+async function _igdbFallback(action,params){
+    var auth=await getIGDBToken();
+    if(!auth)return null;
+    var body=null,seedName=null;
+    try{
+        if(action==='igdb_search'){
+            body='search "'+((params.query||'').replace(/"/g,''))+'"; fields name,cover.image_id,first_release_date,platforms.name,rating; limit '+(params.limit||16)+';';
+        }else if(action==='igdb_catalog'){
+            var pid=IGDB_PLAT_MAP[params.platform];
+            var lim=parseInt(params.limit||'20',10);
+            var off=params.offset?parseInt(params.offset,10):0;
+            var sort=params.sort==='rating'?'rating desc':(params.sort==='name'?'name asc':'first_release_date desc');
+            body='fields name,cover.image_id,first_release_date,platforms.name,rating;'+(pid?' where platforms = ('+pid+') & cover != null;':' where cover != null;')+' sort '+sort+'; limit '+lim+'; offset '+off+';';
+        }else if(action==='igdb_browse'){
+            var mid=IGDB_MODE_MAP[params.mode];
+            if(!mid)return null;
+            body='fields name,cover.image_id,first_release_date,platforms.name,rating; where game_modes = ('+mid+') & cover != null; sort rating desc; limit '+(params.limit||20)+';';
+        }else if(action==='igdb_recommend'){
+            seedName=params.gameName||'';
+            var sBody='search "'+seedName.replace(/"/g,'')+'"; fields genres; limit 1;';
+            var sr=await fetch(PROXY_ORIGIN+'/igdb/games',{method:'POST',headers:{'Client-ID':auth.cid,'Authorization':'Bearer '+auth.token},body:sBody});
+            if(!sr.ok)return null;
+            var sd=await sr.json();
+            var seed=sd&&sd[0];
+            if(!seed||!seed.genres||!seed.genres.length)return{results:[]};
+            body='fields name,cover.image_id,first_release_date,platforms.name,rating; where genres = ('+seed.genres.slice(0,2).join(',')+') & cover != null; sort rating desc; limit '+(params.limit||12)+';';
+        }else return null;
+        var r=await fetch(PROXY_ORIGIN+'/igdb/games',{method:'POST',headers:{'Client-ID':auth.cid,'Authorization':'Bearer '+auth.token},body:body});
+        if(!r.ok)return null;
+        var games=await r.json();
+        var results=(games||[]).map(_igdbToCard);
+        if(seedName){var sl=seedName.toLowerCase();results=results.filter(function(g){return g.name.toLowerCase()!==sl;});}
+        return{results:results};
+    }catch(e){return null;}
+}
+var PROXY_ORIGIN='https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev';
 var _RAWG_NAME_TO_LABEL=null;
 function _rawgPlatformLabel(name){
     if(!_RAWG_NAME_TO_LABEL){_RAWG_NAME_TO_LABEL={};RAWG_PLATFORMS.forEach(function(p){_RAWG_NAME_TO_LABEL[p.name]=p.label;});}
@@ -1460,13 +1503,29 @@ async function _igdbPost(action,params,_retry){
         }else{clearTimeout(tid);return null;}
         var r=await fetch(url,{signal:ctrl.signal});
         clearTimeout(tid);
-        if(!r.ok){var et=await r.text().catch(function(){return'';});window._lastIgdbErr='HTTP '+r.status+' '+et.slice(0,200);return null;}
+        if(!r.ok){
+            var et=await r.text().catch(function(){return'';});
+            window._lastIgdbErr='RAWG: HTTP '+r.status+' '+et.slice(0,150);
+            var fb=await _igdbFallback(action,params);
+            if(fb)window._lastIgdbErr=null;
+            return fb;
+        }
         var data=await r.json();
         var results=(data.results||[]).map(_rawgToCard);
         if(seedName){var sl=seedName.toLowerCase();results=results.filter(function(g){return g.name.toLowerCase()!==sl;});}
+        if(!results.length){
+            var fb2=await _igdbFallback(action,params);
+            if(fb2&&fb2.results&&fb2.results.length)return fb2;
+        }
         window._lastIgdbErr=null;
         return{results:results};
-    }catch(e){clearTimeout(tid);window._lastIgdbErr=(e&&e.message)||String(e);return null;}
+    }catch(e){
+        clearTimeout(tid);
+        window._lastIgdbErr='RAWG: '+((e&&e.message)||String(e));
+        var fb3=await _igdbFallback(action,params);
+        if(fb3)window._lastIgdbErr=null;
+        return fb3;
+    }
 }
 function _proxyPost(action,params){
 if(!PROXY_BASE)return Promise.resolve(null);
@@ -3785,9 +3844,9 @@ async function fetchSGDBCovers(gameName, platform, limit){
 async function fetchSGDBCover(gameName, platform){
     const covers=await fetchSGDBCovers(gameName,platform,1);
     return covers.length?covers[0].url:null;
-} const TGDB_PLAT_MAP={'PS5':4980,'PS4':4919,'PS3':12,'PS2':11,'PS1':10,'PSP':13,'PS Vita':39,'Xbox Series X|S':4981,'Xbox One':4920,'Xbox 360':15,'Switch':4971,'Wii U':38,'3DS':4912,'Wii':9,'GameCube':2,'N64':3,'SNES':6,'NES':7,'PC (Steam)':1,'PC (Epic)':1,'PC (GOG)':1,'PC':1}; async function fetchTGDBCovers(gn,plat,lim){var key=gk('tgdb');if(!key||!gn)return[];var pid=TGDB_PLAT_MAP[plat];var seen=new Set();var res=[];function _ex(d){if(!d.data||!d.data.games||!d.include||!d.include.boxart)return;var ba=d.include.boxart;var base=(ba.base_url&&(ba.base_url.original||ba.base_url.large))||'';var tb=(ba.base_url&&ba.base_url.thumb)||base;if(!base)return;for(var i=0;i<d.data.games.length&&res.length<lim;i++){var gm=d.data.games[i];var arts=ba.data&&ba.data[gm.id];if(!arts)continue;for(var j=0;j<arts.length&&res.length<lim;j++){if(arts[j].side==='front'&&arts[j].filename&&!seen.has(arts[j].filename)){seen.add(arts[j].filename);res.push({url:base+arts[j].filename,thumb:tb+arts[j].filename,w:0,h:0,src:'tgdb',name:gm.game_title||''});}}}}var qs=[gn];var c=cleanSearchName(gn);if(c&&c!==gn)qs.push(c);var _ym2=gn.match(/\((\d{4})\)/);if(_ym2){var _wq=c+' '+_ym2[1];if(qs.indexOf(_wq)<0)qs.push(_wq);}try{for(var qi=0;qi<qs.length&&res.length<lim;qi++){if(pid){var r1=await fetch('https://api.thegamesdb.net/v1/Games/ByGameName?apikey='+encodeURIComponent(key)+'&name='+encodeURIComponent(qs[qi])+'&include=boxart&filter[platform]='+pid);if(r1.ok)_ex(await r1.json());}if(res.length<lim){var r2=await fetch('https://api.thegamesdb.net/v1/Games/ByGameName?apikey='+encodeURIComponent(key)+'&name='+encodeURIComponent(qs[qi])+'&include=boxart');if(r2.ok)_ex(await r2.json());}}}catch(e){}return res;} async function fetchTGDBCover(gn,plat){var c=await fetchTGDBCovers(gn,plat,1);return c.length?c[0].url:null;} async function getIGDBToken(){var cid=gk('igdb_id'),sec=gk('igdb_secret');if(!cid||!sec)return null;var cached=localStorage.getItem('gameVault_igdb_token');if(cached){try{var t=JSON.parse(cached);if(t.exp>Date.now())return{token:t.token,cid:cid};}catch(e){}}try{var r=await fetch('https://id.twitch.tv/oauth2/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'client_id='+encodeURIComponent(cid)+'&client_secret='+encodeURIComponent(sec)+'&grant_type=client_credentials'});if(!r.ok)return null;var d=await r.json();if(d.access_token){localStorage.setItem('gameVault_igdb_token',JSON.stringify({token:d.access_token,exp:Date.now()+(d.expires_in-600)*1000}));return{token:d.access_token,cid:cid};}}catch(e){}return null;} var IGDB_PLAT_MAP={'PS5':167,'PS4':48,'PS3':9,'PS2':8,'PS1':7,'PSP':38,'PS Vita':46,'Xbox Series X|S':169,'Xbox One':49,'Xbox 360':12,'Switch':130,'Wii U':41,'3DS':37,'Wii':5,'GameCube':21,'N64':4,'SNES':19,'NES':18,'PC (Steam)':6,'PC (Epic)':6,'PC (GOG)':6,'PC':6};
+} const TGDB_PLAT_MAP={'PS5':4980,'PS4':4919,'PS3':12,'PS2':11,'PS1':10,'PSP':13,'PS Vita':39,'Xbox Series X|S':4981,'Xbox One':4920,'Xbox 360':15,'Switch':4971,'Wii U':38,'3DS':4912,'Wii':9,'GameCube':2,'N64':3,'SNES':6,'NES':7,'PC (Steam)':1,'PC (Epic)':1,'PC (GOG)':1,'PC':1}; async function fetchTGDBCovers(gn,plat,lim){var key=gk('tgdb');if(!key||!gn)return[];var pid=TGDB_PLAT_MAP[plat];var seen=new Set();var res=[];function _ex(d){if(!d.data||!d.data.games||!d.include||!d.include.boxart)return;var ba=d.include.boxart;var base=(ba.base_url&&(ba.base_url.original||ba.base_url.large))||'';var tb=(ba.base_url&&ba.base_url.thumb)||base;if(!base)return;for(var i=0;i<d.data.games.length&&res.length<lim;i++){var gm=d.data.games[i];var arts=ba.data&&ba.data[gm.id];if(!arts)continue;for(var j=0;j<arts.length&&res.length<lim;j++){if(arts[j].side==='front'&&arts[j].filename&&!seen.has(arts[j].filename)){seen.add(arts[j].filename);res.push({url:base+arts[j].filename,thumb:tb+arts[j].filename,w:0,h:0,src:'tgdb',name:gm.game_title||''});}}}}var qs=[gn];var c=cleanSearchName(gn);if(c&&c!==gn)qs.push(c);var _ym2=gn.match(/\((\d{4})\)/);if(_ym2){var _wq=c+' '+_ym2[1];if(qs.indexOf(_wq)<0)qs.push(_wq);}try{for(var qi=0;qi<qs.length&&res.length<lim;qi++){if(pid){var r1=await fetch('https://api.thegamesdb.net/v1/Games/ByGameName?apikey='+encodeURIComponent(key)+'&name='+encodeURIComponent(qs[qi])+'&include=boxart&filter[platform]='+pid);if(r1.ok)_ex(await r1.json());}if(res.length<lim){var r2=await fetch('https://api.thegamesdb.net/v1/Games/ByGameName?apikey='+encodeURIComponent(key)+'&name='+encodeURIComponent(qs[qi])+'&include=boxart');if(r2.ok)_ex(await r2.json());}}}catch(e){}return res;} async function fetchTGDBCover(gn,plat){var c=await fetchTGDBCovers(gn,plat,1);return c.length?c[0].url:null;} async function getIGDBToken(){var cid=gk('igdb_id'),sec=gk('igdb_secret');if(!cid||!sec)return null;var cached=localStorage.getItem('gameVault_igdb_token');if(cached){try{var t=JSON.parse(cached);if(t.exp>Date.now())return{token:t.token,cid:cid};}catch(e){}}try{var r=await fetch('https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/twitch-token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'client_id='+encodeURIComponent(cid)+'&client_secret='+encodeURIComponent(sec)+'&grant_type=client_credentials'});if(!r.ok)return null;var d=await r.json();if(d.access_token){localStorage.setItem('gameVault_igdb_token',JSON.stringify({token:d.access_token,exp:Date.now()+(d.expires_in-600)*1000}));return{token:d.access_token,cid:cid};}}catch(e){}return null;} var IGDB_PLAT_MAP={'PS5':167,'PS4':48,'PS3':9,'PS2':8,'PS1':7,'PSP':38,'PS Vita':46,'Xbox Series X|S':169,'Xbox One':49,'Xbox 360':12,'Switch':130,'Wii U':41,'3DS':37,'Wii':5,'GameCube':21,'N64':4,'SNES':19,'NES':18,'PC (Steam)':6,'PC (Epic)':6,'PC (GOG)':6,'PC':6};
 async function fetchIGDBCovers(gn,plat,lim){var auth=await getIGDBToken();if(!auth||!gn)return[];var pid=IGDB_PLAT_MAP[plat];var res=[];var sid=new Set();
-async function _iq(term,wp){var where=wp&&pid?'where platforms = ('+pid+'); ':'';var body='search "'+term.replace(/"/g,'')+'"; fields name,cover.image_id;'+where+' limit '+(lim||5)+';';try{var r=await fetch('https://api.igdb.com/v4/games',{method:'POST',headers:{'Client-ID':auth.cid,'Authorization':'Bearer '+auth.token},body:body});if(!r.ok)return;var gs=await r.json();for(var i=0;i<gs.length;i++){if(gs[i].cover&&gs[i].cover.image_id){var iid=gs[i].cover.image_id;if(!sid.has(iid)){sid.add(iid);res.push({url:'https://images.igdb.com/igdb/image/upload/t_1080p/'+iid+'.jpg',thumb:'https://images.igdb.com/igdb/image/upload/t_cover_big/'+iid+'.jpg',w:0,h:0,src:'igdb',name:gs[i].name||''});}}}}catch(e){}}
+async function _iq(term,wp){var where=wp&&pid?'where platforms = ('+pid+'); ':'';var body='search "'+term.replace(/"/g,'')+'"; fields name,cover.image_id;'+where+' limit '+(lim||5)+';';try{var r=await fetch('https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/igdb/games',{method:'POST',headers:{'Client-ID':auth.cid,'Authorization':'Bearer '+auth.token},body:body});if(!r.ok)return;var gs=await r.json();for(var i=0;i<gs.length;i++){if(gs[i].cover&&gs[i].cover.image_id){var iid=gs[i].cover.image_id;if(!sid.has(iid)){sid.add(iid);res.push({url:'https://images.igdb.com/igdb/image/upload/t_1080p/'+iid+'.jpg',thumb:'https://images.igdb.com/igdb/image/upload/t_cover_big/'+iid+'.jpg',w:0,h:0,src:'igdb',name:gs[i].name||''});}}}}catch(e){}}
 var ts=[gn];var cg=cleanSearchName(gn);if(cg&&cg!==gn)ts.push(cg);var _iym=gn.match(/\((\d{4})\)/);if(_iym){var _iwq=cg+' '+_iym[1];if(ts.indexOf(_iwq)<0)ts.push(_iwq);}
 try{for(var ti=0;ti<ts.length&&res.length<lim;ti++){if(pid)await _iq(ts[ti],true);if(res.length<lim)await _iq(ts[ti],false);}}catch(e){}return res.slice(0,lim);} async function fetchIGDBCover(gn,plat){var c=await fetchIGDBCovers(gn,plat,1);return c.length?c[0].url:null;} 
 
