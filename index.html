@@ -1443,20 +1443,20 @@ async function _igdbPost(action,params,_retry){
             var lim=parseInt(params.limit||'20',10);
             var page=params.offset?(Math.floor(parseInt(params.offset,10)/lim)+1):1;
             var ord=params.sort==='rating'?'-rating':(params.sort==='name'?'name':'-added');
-            url='https://api.rawg.io/api/games?key='+encodeURIComponent(key)+'&page_size='+lim+'&page='+page+(plat?'&platforms='+plat.id:'')+'&ordering='+ord;
+            url='https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games?key='+encodeURIComponent(key)+'&page_size='+lim+'&page='+page+(plat?'&platforms='+plat.id:'')+'&ordering='+ord;
         }else if(action==='igdb_search'){
-            url='https://api.rawg.io/api/games?key='+encodeURIComponent(key)+'&search='+encodeURIComponent(params.query||'')+'&page_size='+(params.limit||16);
+            url='https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games?key='+encodeURIComponent(key)+'&search='+encodeURIComponent(params.query||'')+'&page_size='+(params.limit||16);
         }else if(action==='igdb_browse'){
             var tagMap={singleplayer:'singleplayer',splitscreen:'split-screen',coop:'co-op','multiplayer-online':'multiplayer',mmo:'massively-multiplayer'};
-            url='https://api.rawg.io/api/games?key='+encodeURIComponent(key)+'&tags='+encodeURIComponent(tagMap[params.mode]||params.mode)+'&page_size='+(params.limit||20)+'&ordering=-rating';
+            url='https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games?key='+encodeURIComponent(key)+'&tags='+encodeURIComponent(tagMap[params.mode]||params.mode)+'&page_size='+(params.limit||20)+'&ordering=-rating';
         }else if(action==='igdb_recommend'){
-            var sr=await fetch('https://api.rawg.io/api/games?key='+encodeURIComponent(key)+'&search='+encodeURIComponent(params.gameName||'')+'&page_size=1',{signal:ctrl.signal});
+            var sr=await fetch('https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games?key='+encodeURIComponent(key)+'&search='+encodeURIComponent(params.gameName||'')+'&page_size=1',{signal:ctrl.signal});
             var sd=await sr.json();
             var seed=sd&&sd.results&&sd.results[0];
             if(!seed){clearTimeout(tid);return{results:[]};}
             seedName=params.gameName;
             var genreSlugs=(seed.genres||[]).map(function(g){return g.slug;}).slice(0,2).join(',');
-            url='https://api.rawg.io/api/games?key='+encodeURIComponent(key)+'&genres='+encodeURIComponent(genreSlugs)+'&page_size='+(params.limit||12)+'&ordering=-rating';
+            url='https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games?key='+encodeURIComponent(key)+'&genres='+encodeURIComponent(genreSlugs)+'&page_size='+(params.limit||12)+'&ordering=-rating';
         }else{clearTimeout(tid);return null;}
         var r=await fetch(url,{signal:ctrl.signal});
         clearTimeout(tid);
@@ -3012,11 +3012,11 @@ async function detectMissingYears(){
         var chunk=missing.slice(i,i+3);
         var results=await Promise.all(chunk.map(function(g){
             if(g.rawgId){
-                return fetch('https://api.rawg.io/api/games/'+g.rawgId+'?key='+encodeURIComponent(key))
+                return fetch('https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games/'+g.rawgId+'?key='+encodeURIComponent(key))
                     .then(function(r){return r.ok?r.json():null;})
                     .catch(function(){return null;});
             } else {
-                return fetch('https://api.rawg.io/api/games?key='+encodeURIComponent(key)+'&search='+encodeURIComponent(g.name)+'&page_size=5')
+                return fetch('https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games?key='+encodeURIComponent(key)+'&search='+encodeURIComponent(g.name)+'&page_size=5')
                     .then(function(r){return r.ok?r.json():null;})
                     .then(function(d){
                         if(!d||!d.results||!d.results.length)return null;
@@ -3052,7 +3052,7 @@ async function resyncAllGames(){
         g.metacriticScore=0;g.userScore=0;g.notes='';g.vandalScore=0;g.tdjScore=0;g.ignScore=0;g.opencriticScore=0;
         if(!g.rawgId&&g.name){
             try{
-                var sr=await fetch('https://api.rawg.io/api/games?key='+encodeURIComponent(key)+'&search='+encodeURIComponent(g.name)+'&page_size=5');
+                var sr=await fetch('https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games?key='+encodeURIComponent(key)+'&search='+encodeURIComponent(g.name)+'&page_size=5');
                 if(sr.ok){
                     var sd=await sr.json();
                     if(sd.results&&sd.results.length){
@@ -3067,7 +3067,7 @@ async function resyncAllGames(){
         }
         if(g.rawgId){
             try{
-                var dr=await fetch('https://api.rawg.io/api/games/'+g.rawgId+'?key='+encodeURIComponent(key));
+                var dr=await fetch('https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games/'+g.rawgId+'?key='+encodeURIComponent(key));
                 if(dr.ok){
                     var d=await dr.json();
                     if(d.metacritic)g.metacriticScore=d.metacritic;
@@ -3708,7 +3708,7 @@ function openSheet(id){
 function loadSheetRawgInfo(g){
     var key=gk('rawg');if(!key||!g.rawgId)return;
     var el=document.getElementById('sheetRawgInfo');if(!el)return;
-    fetch('https://api.rawg.io/api/games/'+g.rawgId+'?key='+encodeURIComponent(key))
+    fetch('https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games/'+g.rawgId+'?key='+encodeURIComponent(key))
     .then(function(r){if(!r.ok)throw new Error(r.status);return r.json();})
     .then(function(data){
         var el2=document.getElementById('sheetRawgInfo');if(!el2)return;
@@ -3720,7 +3720,7 @@ function loadSheetRawgInfo(g){
         if(data.screenshots_count>0)h+='<div id="sheetScreenshots"></div>';
         el2.innerHTML=h;
         if(data.screenshots_count>0){
-            fetch('https://api.rawg.io/api/games/'+g.rawgId+'/screenshots?key='+encodeURIComponent(key)+'&page_size=6')
+            fetch('https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games/'+g.rawgId+'/screenshots?key='+encodeURIComponent(key)+'&page_size=6')
             .then(function(r){return r.json();}).then(function(sd){
                 var ss=document.getElementById('sheetScreenshots');if(!ss||!sd.results||!sd.results.length)return;
                 var sh='<div class="sheet-section"><div class="sheet-section-title">Capturas</div><div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:8px">';
@@ -3953,7 +3953,7 @@ async function detectSaga(rawgId, gameName){
     const key=gk('rawg');
     if(key&&rawgId){
         try{
-            const r=await fetch('https://api.rawg.io/api/games/'+rawgId+'/game-series?key='+encodeURIComponent(key)+'&page_size=5');
+            const r=await fetch('https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games/'+rawgId+'/game-series?key='+encodeURIComponent(key)+'&page_size=5');
             const d=await r.json();
             if(d.count>0&&d.results?.length){
                 const names=[gameName,...d.results.map(g=>g.name)];
@@ -4807,12 +4807,12 @@ function openGameDetail(rawgId,fromLib,libraryGameId){
     }
     var aborted=false;
     var timer=setTimeout(function(){aborted=true;if(lg){renderGDLibOnly(lg,content);}else{content.innerHTML='<div class="gd-loading">Tiempo agotado</div>';}},8000);
-    fetch("https://api.rawg.io/api/games/"+rawgId+"?key="+encodeURIComponent(key))
+    fetch("https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games/"+rawgId+"?key="+encodeURIComponent(key))
     .then(function(r){if(!r.ok)throw new Error(r.status);return r.json();})
     .then(function(data){
         if(aborted)return;
         gdCurrentData=data;gdCurrentData._libId=libraryGameId||null;
-        return fetch("https://api.rawg.io/api/games/"+rawgId+"/stores?key="+encodeURIComponent(key))
+        return fetch("https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games/"+rawgId+"/stores?key="+encodeURIComponent(key))
         .then(function(r){return r.json();}).catch(function(){return{results:[]};});
     })
     .then(function(sd){
@@ -4879,7 +4879,7 @@ function renderGDFull(data,fromLib){
     if(data.screenshots_count>0){h+='<div id="gdScreenshots"></div>';gdLoadScreens(data.id);}
     h+='</div>';content.innerHTML=h;
 }
-function gdLoadScreens(rid){var key=gk('rawg');if(!key)return;fetch('https://api.rawg.io/api/games/'+rid+'/screenshots?key='+encodeURIComponent(key)+'&page_size=6').then(function(r){return r.json()}).then(function(d){var el=document.getElementById('gdScreenshots');if(!el||!d.results||!d.results.length)return;var h='<div class="gd-section"><div class="gd-section-title">Capturas</div><div class="gd-screenshots">';for(var i=0;i<d.results.length;i++)h+='<img src="'+escHtml(d.results[i].image)+'" loading="lazy" referrerpolicy="no-referrer" alt="">';h+='</div></div>';el.innerHTML=h;}).catch(function(){});}
+function gdLoadScreens(rid){var key=gk('rawg');if(!key)return;fetch('https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games/'+rid+'/screenshots?key='+encodeURIComponent(key)+'&page_size=6').then(function(r){return r.json()}).then(function(d){var el=document.getElementById('gdScreenshots');if(!el||!d.results||!d.results.length)return;var h='<div class="gd-section"><div class="gd-section-title">Capturas</div><div class="gd-screenshots">';for(var i=0;i<d.results.length;i++)h+='<img src="'+escHtml(d.results[i].image)+'" loading="lazy" referrerpolicy="no-referrer" alt="">';h+='</div></div>';el.innerHTML=h;}).catch(function(){});}
 function gdAddToLibrary(){
     if(!gdCurrentData)return;var data=gdCurrentData;closeGameDetail();
     var plats='';if(data.platforms)plats=data.platforms.map(function(p){return p.platform.name}).join(',');
