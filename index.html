@@ -582,6 +582,12 @@
 
 
 <!-- DELETE CONFIRM -->
+<div class="modal-overlay" id="onboardingModal">
+    <div class="modal" style="max-width:420px;max-height:85vh;display:flex;flex-direction:column">
+        <div class="modal-body" style="padding:1.25rem;overflow-y:auto" id="onboardingBody"></div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="deleteModal">
     <div class="modal" style="max-width:360px">
         <div class="modal-body" style="text-align:center;padding:1.5rem">
@@ -953,6 +959,7 @@ async function _doRegister(){
         _applyRoleUI();
         renderInicio();refreshViews();
         showToast('Cuenta creada! Bienvenido, '+u,'success');
+        openOnboarding();
     }catch(e){err.textContent='Error: '+e.message;}
     btn.disabled=false;btn.textContent='Crear cuenta';
 }
@@ -1174,6 +1181,101 @@ function saveMyConsoles(s){
     var arr=Array.from(s);
     localStorage.setItem(CONSOLES_K,JSON.stringify(arr));
     if(_userProfile){_userProfile.consoles=arr;if(_profileSaveTimer){clearTimeout(_profileSaveTimer);_profileSaveTimer=null;}_saveUserProfile();}
+}
+var _onboardingConsoles=new Set();
+function openOnboarding(){
+    _onboardingConsoles=new Set();
+    document.getElementById('onboardingModal').classList.add('open');
+    renderOnboardingStep1();
+}
+function renderOnboardingStep1(){
+    var ALL_CON=[
+        {label:'PlayStation',items:['PS5','PS4','PS3','PS2','PS1','PSP','PS Vita'],color:'#0070d1'},
+        {label:'Xbox',items:['Xbox Series X|S','Xbox One','Xbox 360'],color:'#2db82d'},
+        {label:'Nintendo',items:['Switch','Wii U','3DS','Wii','GameCube','N64','SNES','NES'],color:'#e60012'},
+        {label:'PC',items:['PC'],color:'#ff8833'}
+    ];
+    var h='<div style="font-size:1.05rem;font-weight:800;margin-bottom:0.3rem">¿Qué consolas tenés?</div>';
+    h+='<div style="color:var(--text2);font-size:0.8rem;margin-bottom:1rem">Con esto te vamos a sugerir juegos populares para armar tu biblioteca, y personalizar tus recomendaciones.</div>';
+    for(var gi=0;gi<ALL_CON.length;gi++){var gr=ALL_CON[gi];
+        h+='<div style="width:100%;margin-bottom:0.5rem"><div style="font-size:0.62rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">'+gr.label+'</div><div style="display:flex;flex-wrap:wrap;gap:6px">';
+        for(var pi=0;pi<gr.items.length;pi++){var c=gr.items[pi];var sel=_onboardingConsoles.has(c);
+            h+='<button type="button" onclick="_toggleOnboardingConsole(this,\''+escHtml(c).replace(/'/g,"\\'")+'\')" style="padding:0.35rem 0.7rem;border-radius:9px;font-size:0.75rem;font-weight:600;font-family:inherit;cursor:pointer;transition:all 0.15s;border:'+(sel?'1px solid '+gr.color:'1px solid rgba(255,255,255,0.08)')+';background:'+(sel?gr.color+'18':'var(--bg-surface)')+';color:'+(sel?gr.color:'var(--text2)')+'">'+escHtml(c)+'</button>';}
+        h+='</div></div>';}
+    h+='<div style="display:flex;gap:0.5rem;margin-top:1rem">';
+    h+='<button onclick="closeModal(\'onboardingModal\')" style="flex:1;padding:0.65rem;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;font-family:inherit;cursor:pointer;background:var(--bg-surface);color:var(--text2)">Omitir</button>';
+    h+='<button onclick="_onboardingContinue()" id="onbContinueBtn" style="flex:2;padding:0.65rem;border:none;border-radius:10px;font-size:0.85rem;font-weight:700;font-family:inherit;cursor:pointer;background:var(--accent);color:#000">Continuar</button>';
+    h+='</div>';
+    document.getElementById('onboardingBody').innerHTML=h;
+}
+function _toggleOnboardingConsole(btn,c){
+    if(_onboardingConsoles.has(c))_onboardingConsoles.delete(c);else _onboardingConsoles.add(c);
+    renderOnboardingStep1();
+}
+async function _onboardingContinue(){
+    if(!_onboardingConsoles.size){saveMyConsoles(_onboardingConsoles);closeModal('onboardingModal');return;}
+    saveMyConsoles(_onboardingConsoles);
+    var body=document.getElementById('onboardingBody');
+    body.innerHTML='<div style="padding:2rem;text-align:center;color:var(--text3);font-size:0.85rem"><div class="spinner" style="width:22px;height:22px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 0.6rem"></div>Buscando juegos populares para tus consolas...</div>';
+    var key=gk('rawg');
+    var consoles=Array.from(_onboardingConsoles);
+    var perConsole={};
+    for(var i=0;i<consoles.length;i++){
+        var lbl=consoles[i];
+        var p=RAWG_PLATFORMS.find(function(rp){return rp.label===lbl;});
+        var picks=[];
+        try{
+            if(key&&p){
+                var url=RAWG_PROXY_BASE+'/games?key='+encodeURIComponent(key)+'&platforms='+p.id+'&ordering=-metacritic&page_size=5';
+                var r=await fetch(url);
+                if(r.ok){var d=await r.json();picks=(d.results||[]).map(_rawgToCard);}
+            }
+        }catch(e){}
+        if(!picks.length){
+            try{var fb=await _igdbFallback('igdb_catalog',{platform:lbl,limit:'5',sort:'rating'});if(fb&&fb.results)picks=fb.results;}catch(e2){}
+        }
+        perConsole[lbl]=picks;
+    }
+    _renderOnboardingSuggestions(perConsole);
+}
+function _renderOnboardingSuggestions(perConsole){
+    var body=document.getElementById('onboardingBody');
+    var h='<div style="font-size:1.05rem;font-weight:800;margin-bottom:0.3rem">Juegos populares para vos</div>';
+    h+='<div style="color:var(--text2);font-size:0.8rem;margin-bottom:1rem">Elegí los que ya tenés o querés agregar a tu biblioteca.</div>';
+    var any=false;
+    var consoles=Object.keys(perConsole);
+    for(var ci=0;ci<consoles.length;ci++){
+        var lbl=consoles[ci];var picks=perConsole[lbl];
+        if(!picks.length)continue;
+        any=true;
+        h+='<div style="font-size:0.7rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin:0.75rem 0 0.4rem">'+escHtml(lbl)+'</div>';
+        for(var pi=0;pi<picks.length;pi++){
+            var g=picks[pi];
+            var uid='onb_'+ci+'_'+pi;
+            var img=g.cover?'<img src="'+escHtml(g.cover)+'" loading="lazy" referrerpolicy="no-referrer" style="width:36px;height:48px;object-fit:cover;border-radius:6px;flex-shrink:0">':'<div style="width:36px;height:48px;border-radius:6px;background:var(--bg-surface);flex-shrink:0"></div>';
+            h+='<label style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0.2rem;cursor:pointer" for="'+uid+'">';
+            h+='<input type="checkbox" id="'+uid+'" data-name="'+escHtml(g.name)+'" data-cover="'+escHtml(g.cover||'')+'" data-plat="'+escHtml(lbl)+'" data-mc="'+(g.metacritic||0)+'" data-year="'+(g.year||0)+'" style="width:16px;height:16px;flex-shrink:0">';
+            h+=img;
+            h+='<div style="min-width:0"><div style="font-size:0.82rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(g.name)+'</div><div style="font-size:0.68rem;color:var(--text3)">'+(g.year||'')+(g.metacritic?' · '+g.metacritic:'')+'</div></div>';
+            h+='</label>';
+        }
+    }
+    if(!any){h+='<div style="padding:1.5rem;text-align:center;color:var(--text3);font-size:0.82rem">No encontramos sugerencias esta vez.</div>';}
+    h+='<div style="display:flex;gap:0.5rem;margin-top:1rem">';
+    h+='<button onclick="closeModal(\'onboardingModal\')" style="flex:1;padding:0.65rem;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;font-family:inherit;cursor:pointer;background:var(--bg-surface);color:var(--text2)">Omitir</button>';
+    h+='<button onclick="_onboardingAddSelected()" style="flex:2;padding:0.65rem;border:none;border-radius:10px;font-size:0.85rem;font-weight:700;font-family:inherit;cursor:pointer;background:var(--accent);color:#000">Agregar seleccionados</button>';
+    h+='</div>';
+    body.innerHTML=h;
+}
+function _onboardingAddSelected(){
+    var checks=document.querySelectorAll('#onboardingBody input[type=checkbox]:checked');
+    var count=0;
+    checks.forEach(function(chk){
+        var g={id:genId(),name:chk.dataset.name,platform:chk.dataset.plat,status:'Quiero',saga:'',completion:0,trophiesEarned:0,trophiesTotal:0,rating:0,coverUrl:chk.dataset.cover||'',edition:'',formato:'',vandalScore:0,tdjScore:0,ignScore:0,metacriticScore:parseInt(chk.dataset.mc)||0,opencriticScore:0,userScore:0,notes:'',releaseYear:parseInt(chk.dataset.year)||0,gameCategory:'',addedDate:new Date().toISOString()};
+        games.push(g);count++;
+    });
+    if(count){save();refreshViews();showToast(count+' juego'+(count===1?'':'s')+' agregado'+(count===1?'':'s'),'success');}
+    closeModal('onboardingModal');
 }
 function renderConsolesGrid(){
     var el=document.getElementById('sConsolesGrid');if(!el)return;
