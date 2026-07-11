@@ -1423,11 +1423,49 @@ if(_fromGestion){_fromGestion=false;closeDatosSheet();renderGestion();}else{open
 else{showToast('Error al subir la portada','error');}
 }
 var _proxyCache={};
-function _igdbPost(action,params,_retry){
-if(!PROXY_BASE)return Promise.resolve(null);
-var ms=_retry?45000:30000;
-var ctrl=new AbortController();var tid=setTimeout(function(){ctrl.abort();},ms);
-return fetch(PROXY_BASE+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(params),credentials:'same-origin',signal:ctrl.signal}).then(function(r){clearTimeout(tid);if(!r.ok)return r.text().then(function(t){var msg='HTTP '+r.status;try{var j=JSON.parse(t);if(j.error)msg=j.error;else if(j.message)msg=j.message;}catch(x){}throw new Error(msg);});return r.json();}).catch(function(e){clearTimeout(tid);if(!_retry&&(e.name==='AbortError'||e.message.indexOf('abort')>=0)){return _igdbPost(action,params,true);}if(e.name==='AbortError')throw new Error('Tiempo agotado — intentá de nuevo');throw e;});
+var _RAWG_NAME_TO_LABEL=null;
+function _rawgPlatformLabel(name){
+    if(!_RAWG_NAME_TO_LABEL){_RAWG_NAME_TO_LABEL={};RAWG_PLATFORMS.forEach(function(p){_RAWG_NAME_TO_LABEL[p.name]=p.label;});}
+    return _RAWG_NAME_TO_LABEL[name]||name;
+}
+function _rawgToCard(g){
+    var platList=(g.platforms||[]).map(function(p){return _rawgPlatformLabel(p.platform.name);});
+    return{name:g.name,cover:g.background_image||'',metacritic:g.metacritic||0,year:g.released?parseInt(g.released.slice(0,4),10):0,platforms:platList.join(', '),platList:platList,userRating:g.rating?Math.round(g.rating*20):0,rawgId:g.id};
+}
+async function _igdbPost(action,params,_retry){
+    var key=gk('rawg');
+    if(!key)return null;
+    var ctrl=new AbortController();var tid=setTimeout(function(){ctrl.abort();},15000);
+    try{
+        var url=null,seedGenres=null,seedName=null;
+        if(action==='igdb_catalog'){
+            var plat=RAWG_PLATFORMS.find(function(p){return p.label===params.platform;});
+            var lim=parseInt(params.limit||'20',10);
+            var page=params.offset?(Math.floor(parseInt(params.offset,10)/lim)+1):1;
+            var ord=params.sort==='rating'?'-rating':(params.sort==='name'?'name':'-added');
+            url='https://api.rawg.io/api/games?key='+encodeURIComponent(key)+'&page_size='+lim+'&page='+page+(plat?'&platforms='+plat.id:'')+'&ordering='+ord;
+        }else if(action==='igdb_search'){
+            url='https://api.rawg.io/api/games?key='+encodeURIComponent(key)+'&search='+encodeURIComponent(params.query||'')+'&page_size='+(params.limit||16);
+        }else if(action==='igdb_browse'){
+            var tagMap={singleplayer:'singleplayer',splitscreen:'split-screen',coop:'co-op','multiplayer-online':'multiplayer',mmo:'massively-multiplayer'};
+            url='https://api.rawg.io/api/games?key='+encodeURIComponent(key)+'&tags='+encodeURIComponent(tagMap[params.mode]||params.mode)+'&page_size='+(params.limit||20)+'&ordering=-rating';
+        }else if(action==='igdb_recommend'){
+            var sr=await fetch('https://api.rawg.io/api/games?key='+encodeURIComponent(key)+'&search='+encodeURIComponent(params.gameName||'')+'&page_size=1',{signal:ctrl.signal});
+            var sd=await sr.json();
+            var seed=sd&&sd.results&&sd.results[0];
+            if(!seed){clearTimeout(tid);return{results:[]};}
+            seedName=params.gameName;
+            var genreSlugs=(seed.genres||[]).map(function(g){return g.slug;}).slice(0,2).join(',');
+            url='https://api.rawg.io/api/games?key='+encodeURIComponent(key)+'&genres='+encodeURIComponent(genreSlugs)+'&page_size='+(params.limit||12)+'&ordering=-rating';
+        }else{clearTimeout(tid);return null;}
+        var r=await fetch(url,{signal:ctrl.signal});
+        clearTimeout(tid);
+        if(!r.ok)return null;
+        var data=await r.json();
+        var results=(data.results||[]).map(_rawgToCard);
+        if(seedName){var sl=seedName.toLowerCase();results=results.filter(function(g){return g.name.toLowerCase()!==sl;});}
+        return{results:results};
+    }catch(e){clearTimeout(tid);return null;}
 }
 function _proxyPost(action,params){
 if(!PROXY_BASE)return Promise.resolve(null);
