@@ -1044,11 +1044,11 @@ var _lastLocalEdit=0;
 function load(){try{const d=localStorage.getItem(SK);games=d?JSON.parse(d):[];}catch{games=[];}}
 function save(){localStorage.setItem(SK,JSON.stringify(games));_lastLocalEdit=Date.now();cloudSave();}
 
-function doLogout(){
+async function doLogout(){
     if(!confirm('¿Cerrar sesión?'))return;
+    try{if(_cloudTimer){clearTimeout(_cloudTimer);_cloudTimer=null;}await _saveUserLibrary();}catch(e){}
     if(_presenceTimer){clearInterval(_presenceTimer);_presenceTimer=null;}
     localStorage.removeItem(AUTH_SESSION_KEY);
-    localStorage.removeItem(SK);
     _currentUser=null;_userProfile=null;_userProfileExists=false;
     games=[];
     location.reload();
