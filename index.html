@@ -3607,6 +3607,7 @@ function _startReview(){
 async function _revScan(){
     var area=document.getElementById('revReviewArea');
     if(!area){_revRunning=false;return;}
+    try{
     var pending=games.filter(function(g){return !_revDone.has(g.id)&&!_revSkipped.has(g.id);});
     if(!pending.length){
         _revRunning=false;
@@ -3632,6 +3633,10 @@ async function _revScan(){
     var morePending=games.filter(function(g){return !_revDone.has(g.id)&&!_revSkipped.has(g.id);});
     if(morePending.length){await new Promise(function(r){setTimeout(r,0);});_revScan();}
     else{_revRunning=false;area.innerHTML='<div style="text-align:center;padding:2rem;color:var(--green);font-size:0.9rem;font-weight:600">Todos los juegos fueron revisados</div><div style="text-align:center;padding:0 1rem"><button onclick="_revRunning=false;renderGestion()" style="padding:0.5rem 1.5rem;background:var(--accent);color:#000;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;font-family:inherit;cursor:pointer">Volver</button></div>';}
+    }catch(e){
+        _revRunning=false;
+        area.innerHTML='<div style="text-align:center;padding:2rem;color:var(--red);font-size:0.82rem">Error: '+escHtml((e&&e.message)||String(e))+'<br><button onclick="renderGestion()" style="margin-top:0.75rem;padding:0.5rem 1.5rem;background:var(--accent);color:#000;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;font-family:inherit;cursor:pointer">Volver</button></div>';
+    }
 }
 function _revShowNext(){
     if(!_revQueue.length){_revScan();return;}
