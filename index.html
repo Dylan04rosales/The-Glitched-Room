@@ -1188,6 +1188,7 @@ function saveKey(k,v){
     if((k==='name'||k==='psn')&&_userProfile){_userProfile[k]=v;_debounceSaveProfile();}
     localStorage.setItem({rawg:RAWG_K,psn:PSN_K,name:NAME_K,sgdb:SGDB_K,tgdb:TGDB_K,igdb_id:IGDB_ID_K,igdb_secret:IGDB_SEC_K}[k],v);
     if(k==='igdb_id'||k==='igdb_secret')localStorage.removeItem('gameVault_igdb_token');
+    if(k==='psn'){psnCache=null;psnCacheTime=0;}
     showToast((k==='name'?'Nombre':'Key '+k.toUpperCase())+' guardado','success');
 }
 function getMyConsoles(){
