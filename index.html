@@ -1292,7 +1292,12 @@ function renderConsolesGrid(){
         for(var pi=0;pi<gr.items.length;pi++){var c=gr.items[pi];var sel=my.has(c);
             h+='<button type="button" onclick="toggleMyConsole(this,\''+escHtml(c).replace(/'/g,"\\'")+'\')" data-con="'+escHtml(c)+'" style="padding:0.3rem 0.65rem;border-radius:8px;font-size:0.72rem;font-weight:600;font-family:inherit;cursor:pointer;transition:all 0.15s;border:'+(sel?'1px solid '+gr.color:'1px solid rgba(255,255,255,0.08)')+';background:'+(sel?gr.color+'18':'var(--bg-surface)')+';color:'+(sel?gr.color:'var(--text2)')+'">'+escHtml(c)+'</button>';}
         h+='</div></div>';}
+    h+='<button type="button" onclick="_saveConsolesBtn()" style="margin-top:0.6rem;padding:0.5rem 1rem;border:none;border-radius:9px;font-size:0.78rem;font-weight:700;font-family:inherit;cursor:pointer;background:var(--accent);color:#000">Guardar</button>';
     el.innerHTML=h;
+}
+function _saveConsolesBtn(){
+    saveMyConsoles(getMyConsoles());
+    showToast('Consolas guardadas','success');
 }
 function toggleMyConsole(btn,c){
     var my=getMyConsoles();
@@ -1300,6 +1305,7 @@ function toggleMyConsole(btn,c){
     saveMyConsoles(my);
     renderConsolesGrid();
     rawgCatalogCache=null;rawgCatalogTime=0;
+    showToast('Consolas guardadas','success');
 }
 function getBrand(p){for(const[k,b]of Object.entries(BRANDS))if(b.consoles.includes(p))return k;return'pc'}
 function getBrandColor(p){return BRANDS[getBrand(p)]?.color||'#ff8833'}
