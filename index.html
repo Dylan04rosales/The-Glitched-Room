@@ -1327,6 +1327,7 @@ async function _updatePresence(){
     if(!_currentUser)return;
     try{await _dbSet('presence_'+_currentUser.username,{ts:Date.now(),display:_currentUser.id},true);}catch(e){}
 }
+var _adminRowsCache=null;
 async function openAdminStats(){
     if(!_isAdmin())return;
     document.getElementById('adminStatsModal').classList.add('open');
@@ -1343,22 +1344,25 @@ async function openAdminStats(){
             var ud=idx.users[uname];
             var lib=await _dbGet('lib_'+uname);
             var glist=Array.isArray(lib)?lib:[];
-            var platCount={};
-            for(var j=0;j<glist.length;j++){
-                var pl=glist[j].platform||'Sin definir';
-                platCount[pl]=(platCount[pl]||0)+1;
-            }
-            var favPlat='—',favN=0;
-            Object.keys(platCount).forEach(function(k){if(platCount[k]>favN){favN=platCount[k];favPlat=k;}});
+            var prof=await _dbGet('profile_'+uname);
+            var consoles=(prof&&Array.isArray(prof.consoles))?prof.consoles:[];
             var pres=await _dbGet('presence_'+uname);
             var online=pres&&pres.ts&&(now-pres.ts)<180000;
             if(online)onlineCount++;
-            rows.push({username:ud.displayName||uname,usernameKey:uname,role:ud.role||'user',games:glist.length,favPlat:favPlat,online:online});
+            rows.push({username:ud.displayName||uname,usernameKey:uname,role:ud.role||'user',games:glist.length,consoles:consoles,online:online});
         }
+        _adminRowsCache={total:users.length,online:onlineCount,rows:rows};
         _renderAdminStats(users.length,onlineCount,rows);
     }catch(e){
         body.innerHTML='<div style="padding:2rem;text-align:center;color:var(--red);font-size:0.82rem">Error cargando estadísticas: '+escHtml(e.message||String(e))+'</div>';
     }
+}
+function filterAdminStats(q){
+    if(!_adminRowsCache)return;
+    q=(q||'').toLowerCase().trim();
+    var rows=_adminRowsCache.rows;
+    if(q)rows=rows.filter(function(u){return u.username.toLowerCase().indexOf(q)>=0;});
+    _renderAdminStats(_adminRowsCache.total,_adminRowsCache.online,rows,q);
 }
 async function openAdminUserDetail(uname){
     if(!_isAdmin())return;
@@ -1367,6 +1371,9 @@ async function openAdminUserDetail(uname){
     try{
         var lib=await _dbGet('lib_'+uname);
         var glist=Array.isArray(lib)?lib:[];
+        var prof=await _dbGet('profile_'+uname);
+        var consoles=(prof&&Array.isArray(prof.consoles))?prof.consoles:[];
+        var STATUS_COLORS={'Jugando':'#60a5fa','Quiero':'#facc15','Terminado':'#34d399','Abandonado':'#f87171','Archivado':'#9ca3af'};
         var groups={};
         var order=['Jugando','Quiero','Terminado','Abandonado','Archivado'];
         glist.forEach(function(g){
@@ -1379,40 +1386,73 @@ async function openAdminUserDetail(uname){
             if(ia===-1)ia=99;if(ib===-1)ib=99;
             return ia-ib;
         });
-        var h='<div style="display:flex;align-items:center;gap:8px;margin-bottom:1rem"><button onclick="openAdminStats()" style="background:none;border:none;color:var(--accent);font-size:0.85rem;font-weight:600;cursor:pointer;font-family:inherit;padding:0">← Volver</button></div>';
-        h+='<div style="font-size:1.05rem;font-weight:800;margin-bottom:0.9rem">'+escHtml(uname)+' <span style="font-size:0.75rem;color:var(--text3);font-weight:400">('+glist.length+' juegos)</span></div>';
+        var h='<div style="display:flex;align-items:center;gap:8px;margin-bottom:1rem"><button onclick="_renderAdminStats(_adminRowsCache.total,_adminRowsCache.online,_adminRowsCache.rows)" style="background:none;border:none;color:var(--accent);font-size:0.85rem;font-weight:600;cursor:pointer;font-family:inherit;padding:0">← Volver</button></div>';
+        h+='<div style="font-size:1.05rem;font-weight:800;margin-bottom:2px">'+escHtml(uname)+'</div>';
+        h+='<div style="font-size:0.75rem;color:var(--text3);margin-bottom:0.5rem">'+glist.length+' juegos en total</div>';
+        h+='<div style="font-size:0.68rem;color:var(--text2);background:var(--bg-surface);border-radius:8px;padding:0.5rem 0.7rem;margin-bottom:0.6rem">🎮 Consolas: '+(consoles.length?escHtml(consoles.join(', ')):'<span style="color:var(--text3)">Ninguna seleccionada</span>')+'</div>';
+        var wantCount=glist.filter(function(g){return g.status==='Quiero';}).length;
+        var consoleStats={};
+        consoles.forEach(function(c){consoleStats[c]={fisico:0,digital:0,sinDefinir:0,quiero:0};});
+        glist.forEach(function(g){
+            var pl=g.platform||'';
+            if(!consoleStats[pl])consoleStats[pl]={fisico:0,digital:0,sinDefinir:0,quiero:0};
+            var fmt=(g.formato||'').toLowerCase();
+            if(fmt==='físico'||fmt==='fisico')consoleStats[pl].fisico++;
+            else if(fmt==='digital')consoleStats[pl].digital++;
+            else consoleStats[pl].sinDefinir++;
+            if(g.status==='Quiero')consoleStats[pl].quiero++;
+        });
+        var csKeys=Object.keys(consoleStats);
+        if(csKeys.length){
+            h+='<div style="font-size:0.68rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.35rem">Por consola</div>';
+            h+='<div style="background:var(--bg-surface);border-radius:10px;padding:0.5rem 0.7rem;margin-bottom:0.75rem">';
+            csKeys.forEach(function(c){
+                var s=consoleStats[c];
+                h+='<div style="display:flex;justify-content:space-between;align-items:center;padding:0.3rem 0;font-size:0.74rem;border-bottom:1px solid var(--border)"><span style="font-weight:600">'+escHtml(c)+'</span><span style="color:var(--text3)">💿 '+s.fisico+' · 📥 '+s.digital+(s.sinDefinir?' · ❔ '+s.sinDefinir:'')+(s.quiero?' · ⭐ '+s.quiero+' quiero':'')+'</span></div>';
+            });
+            h+='</div>';
+        }
         if(!glist.length){h+='<div style="padding:1.5rem;text-align:center;color:var(--text3);font-size:0.82rem">Este usuario no tiene juegos todavía.</div>';}
         for(var ki=0;ki<keys.length;ki++){
             var st=keys[ki];var list=groups[st];
-            h+='<div style="font-size:0.7rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin:0.75rem 0 0.4rem">'+escHtml(st)+' ('+list.length+')</div>';
+            var stColor=STATUS_COLORS[st]||'var(--text3)';
+            h+='<div style="display:flex;align-items:center;gap:6px;margin:0.9rem 0 0.5rem"><div style="width:8px;height:8px;border-radius:50%;background:'+stColor+'"></div><div style="font-size:0.72rem;font-weight:700;color:'+stColor+';text-transform:uppercase;letter-spacing:0.05em">'+escHtml(st)+' · '+list.length+'</div></div>';
+            h+='<div style="display:flex;flex-direction:column;gap:2px">';
             for(var li=0;li<list.length;li++){var g=list[li];
-                h+='<div style="display:flex;align-items:center;gap:8px;padding:0.35rem 0;border-bottom:1px solid var(--border)">';
-                h+='<div style="flex:1;min-width:0"><div style="font-size:0.8rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(g.name||'')+'</div><div style="font-size:0.66rem;color:var(--text3)">'+escHtml(g.platform||'')+(g.releaseYear?' · '+g.releaseYear:'')+'</div></div>';
+                var cov=g.coverUrl?'<img src="'+escHtml(g.coverUrl)+'" loading="lazy" referrerpolicy="no-referrer" style="width:32px;height:43px;object-fit:cover;border-radius:5px;flex-shrink:0;background:var(--bg-surface)">':'<div style="width:32px;height:43px;border-radius:5px;background:var(--bg-surface);flex-shrink:0"></div>';
+                h+='<div style="display:flex;align-items:center;gap:8px;padding:0.3rem 0;border-bottom:1px solid var(--border)">';
+                h+=cov;
+                h+='<div style="flex:1;min-width:0"><div style="font-size:0.8rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(g.name||'')+'</div><div style="font-size:0.66rem;color:var(--text3)">'+escHtml(g.platform||'')+(g.releaseYear?' · '+g.releaseYear:'')+(g.formato?' · '+escHtml(g.formato):'')+'</div></div>';
                 h+='</div>';
             }
+            h+='</div>';
         }
         body.innerHTML=h;
     }catch(e){
         body.innerHTML='<div style="padding:2rem;text-align:center;color:var(--red);font-size:0.82rem">Error: '+escHtml((e&&e.message)||String(e))+'</div>';
     }
 }
-function _renderAdminStats(total,online,rows){
+function _renderAdminStats(total,online,rows,q){
     var body=document.getElementById('adminStatsBody');
     var h='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem"><div style="font-size:1.05rem;font-weight:800">📊 Estadísticas de usuarios</div><button onclick="closeModal(\'adminStatsModal\')" style="background:none;border:none;color:var(--text3);font-size:1.2rem;cursor:pointer;line-height:1">×</button></div>';
     h+='<div style="display:flex;gap:0.5rem;margin-bottom:1rem">';
     h+='<div style="flex:1;background:var(--bg-surface);border-radius:10px;padding:0.7rem;text-align:center"><div style="font-size:1.3rem;font-weight:800;color:var(--accent)">'+total+'</div><div style="font-size:0.65rem;color:var(--text3)">Registrados</div></div>';
     h+='<div style="flex:1;background:var(--bg-surface);border-radius:10px;padding:0.7rem;text-align:center"><div style="font-size:1.3rem;font-weight:800;color:var(--green)">'+online+'</div><div style="font-size:0.65rem;color:var(--text3)">Online ahora</div></div>';
     h+='</div>';
+    h+='<input type="text" placeholder="Buscar usuario..." value="'+escHtml(q||'')+'" oninput="filterAdminStats(this.value)" style="width:100%;padding:0.6rem 0.8rem;border-radius:10px;border:1px solid var(--glass-border);background:var(--bg-surface);color:var(--text);font-size:0.82rem;font-family:inherit;margin-bottom:0.75rem;box-sizing:border-box">';
     rows.sort(function(a,b){return b.games-a.games;});
     for(var i=0;i<rows.length;i++){var u=rows[i];
-        h+='<div onclick="openAdminUserDetail(\''+escHtml(u.usernameKey||u.username).replace(/'/g,"\\'")+'\')" style="display:flex;align-items:center;gap:8px;padding:0.5rem 0;border-bottom:1px solid var(--border);cursor:pointer">';
+        var consLabel=u.consoles&&u.consoles.length?u.consoles.join(', '):'Sin consolas';
+        h+='<div onclick="openAdminUserDetail(\''+escHtml(u.usernameKey||u.username).replace(/'/g,"\\'")+'\')" style="display:flex;align-items:center;gap:8px;padding:0.55rem 0;border-bottom:1px solid var(--border);cursor:pointer">';
         h+='<div style="width:7px;height:7px;border-radius:50%;flex-shrink:0;background:'+(u.online?'var(--green)':'var(--text3)')+'"></div>';
-        h+='<div style="flex:1;min-width:0"><div style="font-size:0.82rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(u.username)+(u.role==='admin'?' <span style="font-size:0.6rem;color:var(--accent)">ADMIN</span>':'')+'</div><div style="font-size:0.68rem;color:var(--text3)">'+u.games+' juegos · Favorita: '+escHtml(u.favPlat)+'</div></div>';
+        h+='<div style="flex:1;min-width:0"><div style="font-size:0.82rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(u.username)+(u.role==='admin'?' <span style="font-size:0.6rem;color:var(--accent)">ADMIN</span>':'')+'</div><div style="font-size:0.68rem;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+u.games+' juegos · '+escHtml(consLabel)+'</div></div>';
         h+='<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text3);flex-shrink:0"><path d="m9 18 6-6-6-6"/></svg>';
         h+='</div>';
     }
-    if(!rows.length)h+='<div style="padding:1.5rem;text-align:center;color:var(--text3);font-size:0.82rem">No hay usuarios registrados todavía.</div>';
+    if(!rows.length)h+='<div style="padding:1.5rem;text-align:center;color:var(--text3);font-size:0.82rem">'+(q?'Sin coincidencias para "'+escHtml(q)+'"':'No hay usuarios registrados todavía.')+'</div>';
     body.innerHTML=h;
+    var inp=body.querySelector('input');
+    if(inp){var pos=inp.value.length;inp.focus();inp.setSelectionRange(pos,pos);}
 }
 function toggleMyConsole(btn,c){
     var my=getMyConsoles();
@@ -1717,7 +1757,8 @@ async function _igdbPost(action,params,_retry){
             url='https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games?key='+encodeURIComponent(key)+'&search='+encodeURIComponent(params.query||'')+'&page_size='+(params.limit||16);
         }else if(action==='igdb_browse'){
             var tagMap={singleplayer:'singleplayer',splitscreen:'split-screen',coop:'co-op','multiplayer-online':'multiplayer',mmo:'massively-multiplayer'};
-            url='https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games?key='+encodeURIComponent(key)+'&tags='+encodeURIComponent(tagMap[params.mode]||params.mode)+'&page_size='+(params.limit||20)+'&ordering=-rating';
+            var brPlatIds=(params.platforms||'').split(',').filter(Boolean).map(function(lbl){var p=RAWG_PLATFORMS.find(function(rp){return rp.label===lbl;});return p?p.id:null;}).filter(Boolean);
+            url='https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games?key='+encodeURIComponent(key)+'&tags='+encodeURIComponent(tagMap[params.mode]||params.mode)+(brPlatIds.length?'&platforms='+brPlatIds.join(','):'')+'&page_size='+(params.limit||20)+'&ordering=-metacritic&metacritic=60,100';
         }else if(action==='igdb_recommend'){
             var sr=await fetch('https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games?key='+encodeURIComponent(key)+'&search='+encodeURIComponent(params.gameName||'')+'&page_size=1',{signal:ctrl.signal});
             var sd=await sr.json();
@@ -1727,6 +1768,9 @@ async function _igdbPost(action,params,_retry){
             var genreSlugs=(seed.genres||[]).map(function(g){return g.slug;}).slice(0,2).join(',');
             var platIds=(params.platforms||'').split(',').filter(Boolean).map(function(lbl){var p=RAWG_PLATFORMS.find(function(rp){return rp.label===lbl;});return p?p.id:null;}).filter(Boolean);
             url='https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games?key='+encodeURIComponent(key)+'&genres='+encodeURIComponent(genreSlugs)+(platIds.length?'&platforms='+platIds.join(','):'')+'&page_size='+(params.limit||12)+'&ordering=-metacritic&metacritic=65,100';
+        }else if(action==='igdb_genre'){
+            var gPlatIds=(params.platforms||'').split(',').filter(Boolean).map(function(lbl){var p=RAWG_PLATFORMS.find(function(rp){return rp.label===lbl;});return p?p.id:null;}).filter(Boolean);
+            url='https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games?key='+encodeURIComponent(key)+'&'+params.param+'='+encodeURIComponent(params.slug)+(gPlatIds.length?'&platforms='+gPlatIds.join(','):'')+'&page_size='+(params.limit||20)+'&ordering=-metacritic&metacritic=60,100';
         }else if(action==='igdb_toprated'){
             var tpPlatIds=(params.platforms||'').split(',').filter(Boolean).map(function(lbl){var p=RAWG_PLATFORMS.find(function(rp){return rp.label===lbl;});return p?p.id:null;}).filter(Boolean);
             url='https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games?key='+encodeURIComponent(key)+(tpPlatIds.length?'&platforms='+tpPlatIds.join(','):'')+'&page_size='+(params.limit||16)+'&ordering=-metacritic&metacritic=70,100';
@@ -1743,14 +1787,14 @@ async function _igdbPost(action,params,_retry){
         var data=await r.json();
         var results=(data.results||[]).map(_rawgToCard);
         if(seedName){var sl=seedName.toLowerCase();results=results.filter(function(g){return g.name.toLowerCase()!==sl;});}
-        if(!results.length&&(action==='igdb_recommend'||action==='igdb_toprated')&&url.indexOf('&platforms=')>=0){
+        if(!results.length&&(action==='igdb_recommend'||action==='igdb_toprated'||action==='igdb_genre'||action==='igdb_browse')&&url.indexOf('&platforms=')>=0){
             var urlNoPlat=url.replace(/&platforms=[^&]*/,'');
             try{
                 var r3=await fetch(urlNoPlat);
                 if(r3.ok){var data3=await r3.json();results=(data3.results||[]).map(_rawgToCard);if(seedName){var sl3=seedName.toLowerCase();results=results.filter(function(g){return g.name.toLowerCase()!==sl3;});}}
             }catch(e4){}
         }
-        if(!results.length&&action==='igdb_recommend'&&url.indexOf('metacritic=')>=0){
+        if(!results.length&&(action==='igdb_recommend'||action==='igdb_toprated'||action==='igdb_genre'||action==='igdb_browse')&&url.indexOf('metacritic=')>=0){
             var urlNoMc=url.replace(/&metacritic=[^&]*/,'').replace('ordering=-metacritic','ordering=-rating');
             try{
                 var r4=await fetch(urlNoMc);
@@ -1919,18 +1963,18 @@ var EXPLORE_PLATFORMS=[
 ];
 
 var EXPLORE_GENRES=[
-    {label:'Acción',seed:'Devil May Cry 5',emoji:'⚔️'},
-    {label:'RPG',seed:'Final Fantasy XVI',emoji:'🧙'},
-    {label:'Aventura',seed:'Uncharted 4',emoji:'🗺️'},
-    {label:'Terror',seed:'Resident Evil Village',emoji:'👻'},
-    {label:'Deportes',seed:'FIFA 23',emoji:'⚽'},
-    {label:'Carreras',seed:'Gran Turismo 7',emoji:'🏎️'},
-    {label:'Shooter',seed:'Call of Duty',emoji:'🔫'},
-    {label:'Plataformas',seed:'Super Mario Odyssey',emoji:'🍄'},
-    {label:'Pelea',seed:'Street Fighter 6',emoji:'🥊'},
-    {label:'Puzzle',seed:'Portal 2',emoji:'🧩'},
-    {label:'Estrategia',seed:'Civilization VI',emoji:'♟️'},
-    {label:'Souls-like',seed:'Elden Ring',emoji:'🗡️'}
+    {label:'Acción',param:'genres',slug:'action',emoji:'⚔️'},
+    {label:'RPG',param:'genres',slug:'role-playing-games-rpg',emoji:'🧙'},
+    {label:'Aventura',param:'genres',slug:'adventure',emoji:'🗺️'},
+    {label:'Terror',param:'tags',slug:'horror',emoji:'👻'},
+    {label:'Deportes',param:'genres',slug:'sports',emoji:'⚽'},
+    {label:'Carreras',param:'genres',slug:'racing',emoji:'🏎️'},
+    {label:'Shooter',param:'genres',slug:'shooter',emoji:'🔫'},
+    {label:'Plataformas',param:'genres',slug:'platformer',emoji:'🍄'},
+    {label:'Pelea',param:'genres',slug:'fighting',emoji:'🥊'},
+    {label:'Puzzle',param:'genres',slug:'puzzle',emoji:'🧩'},
+    {label:'Estrategia',param:'genres',slug:'strategy',emoji:'♟️'},
+    {label:'Souls-like',param:'tags',slug:'souls-like',emoji:'🗡️'}
 ];
 
 var EXPLORE_MODES=[
@@ -2018,7 +2062,7 @@ async function loadExplorePlatform(platLabel){
         var all=[];
         var key=gk('rawg');
         if(key){
-            var url=RAWG_PROXY_BASE+'/games?key='+encodeURIComponent(key)+'&platforms='+ids.join(',')+'&page_size=30&ordering=-added';
+            var url=RAWG_PROXY_BASE+'/games?key='+encodeURIComponent(key)+'&platforms='+ids.join(',')+'&page_size=30&ordering=-metacritic&metacritic=60,100';
             var r=await fetch(url);
             if(r.ok){var data=await r.json();all=(data.results||[]).map(_rawgToCard);}
         }
@@ -2061,8 +2105,8 @@ async function exploreByGenre(idx){
     try{
         var myConsoles=getMyConsoles();
         var platStr=myConsoles.size?Array.from(myConsoles).join(','):'';
-        var d=await _igdbPost('igdb_recommend',{gameName:genre.seed,platforms:platStr,limit:'20'});
-        var results=d&&d.results?d.results.filter(function(g){return g.cover}):[];
+        var d=await _igdbPost('igdb_genre',{param:genre.param,slug:genre.slug,platforms:platStr,limit:'20'});
+        var results=d&&d.results?d.results:[];
         _exploreCache[ck]=results;
         renderExploreGenreResults(el,results,genre.label);
     }catch(e){el.innerHTML='<div style="padding:1rem;text-align:center;color:var(--red);font-size:0.82rem">Error: '+escHtml(e.message)+'</div>';}
@@ -2096,7 +2140,9 @@ async function exploreByMode(tag){
     if(_exploreModeCache[tag]){renderExploreModeResults(el,_exploreModeCache[tag],tag);return;}
     el.innerHTML='<div style="padding:2rem;text-align:center;color:var(--text3);font-size:0.82rem"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 0.5rem"></div>Buscando...</div>';
     try{
-        var d=await _igdbPost('igdb_browse',{mode:tag,limit:'30'});
+        var myConsoles=getMyConsoles();
+        var platStr=myConsoles.size?Array.from(myConsoles).join(','):'';
+        var d=await _igdbPost('igdb_browse',{mode:tag,platforms:platStr,limit:'30'});
         var results=d&&d.results?d.results:[];
         _exploreModeCache[tag]=results;
         renderExploreModeResults(el,results,tag);
@@ -3111,11 +3157,23 @@ async function loadPSNProfile(force){
     const el=document.getElementById('psnContent');if(!el)return;
     const username=gk('psn');
     if(!username){el.innerHTML='<div class="psn-error">Configura tu username de PSN en Ajustes<button onclick="openSettings()">Ir a Ajustes</button></div>';return;}
-    if(typeof _psnPreload!=='undefined'&&_psnPreload&&_psnPreload.games&&_psnPreload.games.length){
-        psnCache=_psnPreload;psnCacheTime=Date.now();renderPSNData(_psnPreload);return;
-    }
     if(!force&&psnCache&&Date.now()-psnCacheTime<PSN_CACHE_TTL){renderPSNData(psnCache);return;}
-    el.innerHTML='<div class="psn-error">No hay datos de PSN cargados<br><span style="font-size:0.72rem;opacity:0.7">Los datos se importan desde el chat con el agente</span></div>';
+    el.innerHTML='<div style="padding:2rem;text-align:center;color:var(--text3);font-size:0.85rem"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 0.5rem"></div>Sincronizando con PSNProfiles...</div>';
+    try{
+        var r=await fetch(PROXY_ORIGIN+'/psnprofiles?username='+encodeURIComponent(username));
+        if(!r.ok)throw new Error('HTTP '+r.status);
+        var html=await r.text();
+        var doc=new DOMParser().parseFromString(html,'text/html');
+        var data=parsePSNProfile(doc,username);
+        if(!data.trophies.total&&!data.games.length&&!data.level){
+            el.innerHTML='<div class="psn-error">No se encontró el perfil "'+escHtml(username)+'" en PSNProfiles, o el perfil es privado.<button onclick="openSettings()">Revisar Ajustes</button></div>';
+            return;
+        }
+        psnCache=data;psnCacheTime=Date.now();
+        renderPSNData(data);
+    }catch(e){
+        el.innerHTML='<div class="psn-error">Error al sincronizar: '+escHtml((e&&e.message)||String(e))+'<button onclick="loadPSNProfile(true)">Reintentar</button></div>';
+    }
 }
 function parsePSNProfile(doc,username){
     const data={username,level:0,trophies:{platinum:0,gold:0,silver:0,bronze:0,total:0},stats:{},games:[],rareTrophies:[]};
