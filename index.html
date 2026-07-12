@@ -2758,7 +2758,7 @@ function _renderSagasInicio(data){
     else el.insertAdjacentHTML('beforeend',h);
 }
 
-let profileFilter='all';
+let profileFilter='all';var profileSort='name';
 let formatoFilter='all';
 var platFilter=new Set();
 function renderPerfil(){
@@ -2825,6 +2825,7 @@ function renderPerfil(){
             h+='</div>';
         }
         if(games.length&&_isAdmin()){h+='<div style="text-align:right;padding:0 0.3rem 0.3rem;display:flex;justify-content:flex-end;gap:0.8rem">';h+='<button onclick="bulkRefreshCovers()" style="background:none;border:none;color:var(--accent);font-size:0.72rem;font-weight:600;cursor:pointer;font-family:inherit">🔄 Actualizar portadas</button>';h+='<button onclick="gdClearCovers()" style="background:none;border:none;color:var(--text3);font-size:0.72rem;font-weight:500;cursor:pointer;font-family:inherit">🗑 Limpiar portadas</button>';h+='<button onclick="gdClearCustomCovers()" style="background:none;border:none;color:var(--red);font-size:0.72rem;font-weight:500;cursor:pointer;font-family:inherit">🗑 Borrar personalizadas</button></div>';}
+        h+='<div style="padding:0.3rem 0.3rem 0.5rem"><select id="profileSortSelect" onchange="profileSort=this.value;renderPerfilGrid()" style="width:100%;padding:0.45rem 0.7rem;border-radius:9px;border:1px solid var(--glass-border);background:var(--bg-surface);color:var(--text);font-size:0.8rem;font-family:inherit"><option value="name">Ordenar: A-Z</option><option value="rating_desc">Ordenar: Mi nota (mayor a menor)</option><option value="rating_asc">Ordenar: Mi nota (menor a mayor)</option><option value="crit_desc">Ordenar: Crítica (mayor a menor)</option><option value="crit_asc">Ordenar: Crítica (menor a mayor)</option></select></div>';
         h+='<div class="cover-grid" id="profileGrid"></div>';
         if(!games.length)h='<div class="empty-state" style="min-height:30vh"><p>Todavia no agregaste juegos</p><button class="empty-btn" onclick="openAddModal()">Agregar juego</button></div>';
     } else if(profileTab==='sagas'){
@@ -2865,6 +2866,14 @@ function _gamePlatSet(g){return(g.platform||'').split(',').map(function(s){retur
 function _gameAllPlats(g){var own=_gamePlatSet(g);var seen=new Set(own);var name=(g.name||'').toLowerCase();for(var i=0;i<games.length;i++){if(games[i].id!==g.id&&(games[i].name||'').toLowerCase()===name){var ps=_gamePlatSet(games[i]);for(var j=0;j<ps.length;j++)if(!seen.has(ps[j])){seen.add(ps[j]);own.push(ps[j]);}}}return own;}
 function _gameMatchesPlat(g){if(!platFilter.size)return true;var ps=_gamePlatSet(g);for(var i=0;i<ps.length;i++)if(platFilter.has(ps[i]))return true;return false;}
 function _gameMatchesPlatSet(g,pset){var ps=_gamePlatSet(g);for(var i=0;i<ps.length;i++)if(pset.has(ps[i]))return true;return false;}
+function _applyProfileSort(list){
+    if(profileSort==='rating_desc')list.sort(function(a,b){return(b.rating||0)-(a.rating||0)||a.name.localeCompare(b.name);});
+    else if(profileSort==='rating_asc')list.sort(function(a,b){return(a.rating||0)-(b.rating||0)||a.name.localeCompare(b.name);});
+    else if(profileSort==='crit_desc')list.sort(function(a,b){return(_avgScore(b)||0)-(_avgScore(a)||0)||a.name.localeCompare(b.name);});
+    else if(profileSort==='crit_asc')list.sort(function(a,b){var aa=_avgScore(a)||999,ab=_avgScore(b)||999;return aa-ab||a.name.localeCompare(b.name);});
+    else list.sort(function(a,b){return a.name.localeCompare(b.name);});
+    return list;
+}
 var _profileGroupPref=null;
 function renderPerfilGrid(){
     const el=document.getElementById('profileGrid');if(!el)return;
@@ -2877,19 +2886,20 @@ function renderPerfilGrid(){
     if(platFilter.size)list=list.filter(_gameMatchesPlat);
     if(!list.length){el.innerHTML='<div class="empty-state" style="min-height:20vh"><p>No hay juegos en esta categoria</p></div>';return;}
     var isAllFilters=profileFilter==='all'&&formatoFilter==='all'&&platFilter.size===0;
+    var sortSel=document.getElementById('profileSortSelect');if(sortSel)sortSel.value=profileSort;
     if(isAllFilters){
-        list.sort((a,b)=>a.name.localeCompare(b.name));
+        _applyProfileSort(list);
         el.innerHTML=list.map(g=>renderCover(g)).join('');
         return;
     }
     if(_profileGroupPref===null){
         el.innerHTML='<div style="grid-column:1/-1;background:var(--bg-surface);border-radius:10px;padding:0.75rem;margin-bottom:0.5rem;display:flex;align-items:center;justify-content:space-between;gap:8px"><span style="font-size:0.78rem;color:var(--text2)">¿Agrupar los resultados por consola?</span><div style="display:flex;gap:6px;flex-shrink:0"><button onclick="_profileGroupPref=true;renderPerfilGrid()" style="padding:0.35rem 0.8rem;background:var(--accent);color:#000;border:none;border-radius:8px;font-size:0.75rem;font-weight:700;font-family:inherit;cursor:pointer">Sí</button><button onclick="_profileGroupPref=false;renderPerfilGrid()" style="padding:0.35rem 0.8rem;background:var(--bg-elevated);color:var(--text2);border:none;border-radius:8px;font-size:0.75rem;font-weight:700;font-family:inherit;cursor:pointer">No</button></div></div>';
-        list.sort((a,b)=>a.name.localeCompare(b.name));
+        _applyProfileSort(list);
         el.innerHTML+=list.map(g=>renderCover(g)).join('');
         return;
     }
     if(_profileGroupPref===false){
-        list.sort((a,b)=>a.name.localeCompare(b.name));
+        _applyProfileSort(list);
         el.innerHTML='<div style="grid-column:1/-1;display:flex;justify-content:flex-end;margin-bottom:0.3rem"><button onclick="_profileGroupPref=null;renderPerfilGrid()" style="background:none;border:none;color:var(--accent);font-size:0.72rem;font-weight:600;cursor:pointer;font-family:inherit">Agrupar por consola</button></div>'+list.map(g=>renderCover(g)).join('');
         return;
     }
@@ -2913,7 +2923,7 @@ function renderPerfilGrid(){
         if(!byBrandPlat[brand])continue;
         const info=BRANDS[brand]||{label:'Otros',color:'#888'};
         for(const[plat,pGames]of Object.entries(byBrandPlat[brand])){
-            pGames.sort((a,b)=>a.name.localeCompare(b.name));
+            _applyProfileSort(pGames);
             var _pcc=PLAT_COLORS[plat]||info.color;
             h+='<div style="grid-column:1/-1;display:flex;align-items:center;gap:8px;padding:0.5rem 0 0.2rem"><div style="width:4px;height:18px;border-radius:2px;background:'+_pcc+'"></div><span style="font-size:0.82rem;font-weight:700;color:var(--text)">'+escHtml(plat)+'</span><span style="font-size:0.68rem;color:var(--text3)">'+pGames.length+'</span></div>';
             h+=pGames.map(g=>renderCover(g)).join('');
