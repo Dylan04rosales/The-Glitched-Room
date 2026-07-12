@@ -974,7 +974,17 @@ async function _loadUserLibrary(){
     var key=_cloudKey();
     var d=await _dbGet(key);
     if(Array.isArray(d)&&d.length){games=d;localStorage.setItem(SK,JSON.stringify(games));_cloudExists=true;_cloudReady=true;_lastCloudHash=_hashGames();}
-    else{games=[];localStorage.setItem(SK,'[]');_cloudReady=true;}
+    else{
+        var localBackup=[];
+        try{localBackup=JSON.parse(localStorage.getItem(SK)||'[]');}catch(e){}
+        if(Array.isArray(localBackup)&&localBackup.length){
+            games=localBackup;_cloudReady=true;
+            _cloudExists=await _dbSet(key,games,false);
+            _lastCloudHash=_hashGames();
+        }else{
+            games=[];localStorage.setItem(SK,'[]');_cloudReady=true;
+        }
+    }
     await _loadUserProfile();
     return games.length>0;
 }
@@ -992,6 +1002,16 @@ async function _loadUserProfile(){
     var key=_profileKey();if(!key)return;
     var d=await _dbGet(key);
     if(d&&typeof d==='object'&&!Array.isArray(d)){_userProfile=d;_userProfileExists=true;}
+    else{
+        var localName=localStorage.getItem(NAME_K)||'';
+        var localPsn=localStorage.getItem(PSN_K)||'';
+        var localCons=[];
+        try{localCons=JSON.parse(localStorage.getItem(CONSOLES_K)||'[]');}catch(e){}
+        if(localName||localPsn||(Array.isArray(localCons)&&localCons.length)){
+            _userProfile={name:localName,psn:localPsn,consoles:Array.isArray(localCons)?localCons:[]};
+            _userProfileExists=await _dbSet(key,_userProfile,false);
+        }
+    }
     if(_userProfile.name)localStorage.setItem(NAME_K,_userProfile.name);
     if(_userProfile.psn)localStorage.setItem(PSN_K,_userProfile.psn);
     if(_userProfile.consoles&&_userProfile.consoles.length)localStorage.setItem(CONSOLES_K,JSON.stringify(_userProfile.consoles));
@@ -1026,11 +1046,12 @@ function load(){try{const d=localStorage.getItem(SK);games=d?JSON.parse(d):[];}c
 function save(){localStorage.setItem(SK,JSON.stringify(games));_lastLocalEdit=Date.now();cloudSave();}
 
 function doLogout(){
-    // Esta version es de un solo usuario local (sin cuentas en la nube),
-    // asi que "cerrar sesion" reinicia la biblioteca guardada en este navegador.
-    if(!confirm('Esto borra tu biblioteca guardada en este navegador (no afecta ningun backup que hayas descargado). ¿Continuar?'))return;
+    if(!confirm('¿Cerrar sesión?'))return;
+    if(_presenceTimer){clearInterval(_presenceTimer);_presenceTimer=null;}
+    localStorage.removeItem(AUTH_SESSION_KEY);
     localStorage.removeItem(SK);
-    localStorage.removeItem('gameVault_seeded');
+    _currentUser=null;_userProfile=null;_userProfileExists=false;
+    games=[];
     location.reload();
 }
 
