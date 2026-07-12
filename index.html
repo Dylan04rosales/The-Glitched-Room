@@ -582,6 +582,12 @@
 
 
 <!-- DELETE CONFIRM -->
+<div class="modal-overlay" id="adminStatsModal">
+    <div class="modal" style="max-width:460px;max-height:85vh;display:flex;flex-direction:column">
+        <div class="modal-body" style="padding:1.25rem;overflow-y:auto" id="adminStatsBody"></div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="onboardingModal">
     <div class="modal" style="max-width:420px;max-height:85vh;display:flex;flex-direction:column">
         <div class="modal-body" style="padding:1.25rem;overflow-y:auto" id="onboardingBody"></div>
@@ -702,8 +708,8 @@ function filterPlatforms(rawgPlats){
 function resetPlatforms(){renderFormPlatPicker('');}
 let platformChart=null,statusChart=null,formatoChart=null;
 
-var CLOUD_NET=(function(){var m=window.location.pathname.match(/\/networks\/([^\/]+)\//);return m?m[1]:''})();
-var CLOUD_API=CLOUD_NET?'/api/v1/networks/'+CLOUD_NET+'/storages/gamedata':'';
+var CLOUD_NET='shared';
+var CLOUD_API='cloudflare-kv';
 var _cloudTimer=null;var _cloudExists=false;var _cloudReady=false;
 var _currentUser=null;
 var _usersIndex=null;
@@ -749,24 +755,20 @@ function _validateUsername(u){
 }
 
 async function _dbGet(key){
-    if(!CLOUD_API)return null;
-    try{var r=await fetch(CLOUD_API+'/'+encodeURIComponent(key),{credentials:'same-origin'});if(!r.ok)return null;var d=await r.json();return d&&d.payload?JSON.parse(d.payload):null;}catch(e){return null;}
+    try{
+        var r=await fetch(PROXY_ORIGIN+'/kv/get?key='+encodeURIComponent(key));
+        if(!r.ok)return null;
+        var d=await r.json();
+        return d&&d.value?JSON.parse(d.value):null;
+    }catch(e){return null;}
 }
 async function _dbSet(key,data,exists){
-    if(!CLOUD_API)return false;
     try{
-        var payload=JSON.stringify(data);
-        var url=exists?CLOUD_API+'/'+encodeURIComponent(key):CLOUD_API;
-        var body=exists?{payload:payload}:{id:key,payload:payload};
-        var r=await fetch(url,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-        if(r.ok)return true;
-        if(r.status===409||r.status===404){
-            url=exists?CLOUD_API:CLOUD_API+'/'+encodeURIComponent(key);
-            body=exists?{id:key,payload:payload}:{payload:payload};
-            var r2=await fetch(url,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-            return r2.ok;
-        }
-    }catch(e){}return false;
+        var r=await fetch(PROXY_ORIGIN+'/kv/set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:key,value:JSON.stringify(data)})});
+        if(!r.ok)return false;
+        var d=await r.json();
+        return!!(d&&d.ok);
+    }catch(e){return false;}
 }
 
 var CATALOG_API='';
@@ -922,6 +924,7 @@ async function _doLogin(){
         _applyRoleUI();
         games.forEach(function(g){_probeLocalCover(g);});
         _syncUserCatalog();
+        _startPresence();
         renderInicio();refreshViews();
         showToast('Bienvenido, '+_currentUser.id,'success');
     }catch(e){err.textContent='Error: '+e.message;}
@@ -959,6 +962,7 @@ async function _doRegister(){
         _applyRoleUI();
         renderInicio();refreshViews();
         showToast('Cuenta creada! Bienvenido, '+u,'success');
+        _startPresence();
         openOnboarding();
     }catch(e){err.textContent='Error: '+e.message;}
     btn.disabled=false;btn.textContent='Crear cuenta';
@@ -1090,27 +1094,20 @@ async function _changePassword(oldPw,newPw){
 }
 
 async function _initAuth(){
-    // Modo local: esta version no depende de un backend en la nube.
-    // Se autentica automaticamente como el unico usuario local y precarga
-    // la biblioteca exportada la primera vez que se abre en este navegador.
-    _currentUser={id:'Dylan04Rosales',username:'dylan04rosales',role:'admin',createdAt:Date.now(),lastUsernameChange:0,lastPasswordChange:0};
-    localStorage.setItem(AUTH_SESSION_KEY,JSON.stringify(_currentUser));
-    document.getElementById('authModal').classList.remove('open');
-    load();
-    if((!games||!games.length)&&!localStorage.getItem('gameVault_seeded')){
+    var raw=localStorage.getItem(AUTH_SESSION_KEY);
+    if(raw){
         try{
-            if(typeof DEFAULT_LIBRARY_SEED!=='undefined'&&DEFAULT_LIBRARY_SEED&&DEFAULT_LIBRARY_SEED.games){
-                games=DEFAULT_LIBRARY_SEED.games;
-                save();
-                if(DEFAULT_LIBRARY_SEED.psnUsername)localStorage.setItem(PSN_K,DEFAULT_LIBRARY_SEED.psnUsername);
-            }
+            _currentUser=JSON.parse(raw);
+            document.getElementById('authModal').classList.remove('open');
+            await _loadUserLibrary();
+            _applyRoleUI();
+            games.forEach(function(g){_probeLocalCover(g);});
+            _syncUserCatalog();
+            _startPresence();
+            renderInicio();
+            return true;
         }catch(e){}
-        localStorage.setItem('gameVault_seeded','1');
     }
-    _userProfile={name:localStorage.getItem(NAME_K)||'',psn:localStorage.getItem(PSN_K)||'',consoles:[]};
-    try{var _c=localStorage.getItem(CONSOLES_K);if(_c)_userProfile.consoles=JSON.parse(_c);}catch(e){}
-    _applyRoleUI();
-    return true;
     document.getElementById('authModal').classList.add('open');
     return false;
 }
@@ -1298,6 +1295,67 @@ function renderConsolesGrid(){
 function _saveConsolesBtn(){
     saveMyConsoles(getMyConsoles());
     showToast('Consolas guardadas','success');
+}
+var _presenceTimer=null;
+function _startPresence(){
+    if(!_currentUser)return;
+    _updatePresence();
+    if(_presenceTimer)clearInterval(_presenceTimer);
+    _presenceTimer=setInterval(_updatePresence,60000);
+}
+async function _updatePresence(){
+    if(!_currentUser)return;
+    try{await _dbSet('presence_'+_currentUser.username,{ts:Date.now(),display:_currentUser.id},true);}catch(e){}
+}
+async function openAdminStats(){
+    if(!_isAdmin())return;
+    document.getElementById('adminStatsModal').classList.add('open');
+    var body=document.getElementById('adminStatsBody');
+    body.innerHTML='<div style="padding:2rem;text-align:center;color:var(--text3);font-size:0.85rem"><div class="spinner" style="width:22px;height:22px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 0.6rem"></div>Cargando estadísticas...</div>';
+    try{
+        var idx=await _dbGet('_users_index');
+        var users=(idx&&idx.users)?Object.keys(idx.users):[];
+        var now=Date.now();
+        var rows=[];
+        var onlineCount=0;
+        for(var i=0;i<users.length;i++){
+            var uname=users[i];
+            var ud=idx.users[uname];
+            var lib=await _dbGet('lib_'+uname);
+            var glist=Array.isArray(lib)?lib:[];
+            var platCount={};
+            for(var j=0;j<glist.length;j++){
+                var pl=glist[j].platform||'Sin definir';
+                platCount[pl]=(platCount[pl]||0)+1;
+            }
+            var favPlat='—',favN=0;
+            Object.keys(platCount).forEach(function(k){if(platCount[k]>favN){favN=platCount[k];favPlat=k;}});
+            var pres=await _dbGet('presence_'+uname);
+            var online=pres&&pres.ts&&(now-pres.ts)<180000;
+            if(online)onlineCount++;
+            rows.push({username:ud.displayName||uname,role:ud.role||'user',games:glist.length,favPlat:favPlat,online:online});
+        }
+        _renderAdminStats(users.length,onlineCount,rows);
+    }catch(e){
+        body.innerHTML='<div style="padding:2rem;text-align:center;color:var(--red);font-size:0.82rem">Error cargando estadísticas: '+escHtml(e.message||String(e))+'</div>';
+    }
+}
+function _renderAdminStats(total,online,rows){
+    var body=document.getElementById('adminStatsBody');
+    var h='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem"><div style="font-size:1.05rem;font-weight:800">📊 Estadísticas de usuarios</div><button onclick="closeModal(\'adminStatsModal\')" style="background:none;border:none;color:var(--text3);font-size:1.2rem;cursor:pointer;line-height:1">×</button></div>';
+    h+='<div style="display:flex;gap:0.5rem;margin-bottom:1rem">';
+    h+='<div style="flex:1;background:var(--bg-surface);border-radius:10px;padding:0.7rem;text-align:center"><div style="font-size:1.3rem;font-weight:800;color:var(--accent)">'+total+'</div><div style="font-size:0.65rem;color:var(--text3)">Registrados</div></div>';
+    h+='<div style="flex:1;background:var(--bg-surface);border-radius:10px;padding:0.7rem;text-align:center"><div style="font-size:1.3rem;font-weight:800;color:var(--green)">'+online+'</div><div style="font-size:0.65rem;color:var(--text3)">Online ahora</div></div>';
+    h+='</div>';
+    rows.sort(function(a,b){return b.games-a.games;});
+    for(var i=0;i<rows.length;i++){var u=rows[i];
+        h+='<div style="display:flex;align-items:center;gap:8px;padding:0.5rem 0;border-bottom:1px solid var(--border)">';
+        h+='<div style="width:7px;height:7px;border-radius:50%;flex-shrink:0;background:'+(u.online?'var(--green)':'var(--text3)')+'"></div>';
+        h+='<div style="flex:1;min-width:0"><div style="font-size:0.82rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(u.username)+(u.role==='admin'?' <span style="font-size:0.6rem;color:var(--accent)">ADMIN</span>':'')+'</div><div style="font-size:0.68rem;color:var(--text3)">'+u.games+' juegos · Favorita: '+escHtml(u.favPlat)+'</div></div>';
+        h+='</div>';
+    }
+    if(!rows.length)h+='<div style="padding:1.5rem;text-align:center;color:var(--text3);font-size:0.82rem">No hay usuarios registrados todavía.</div>';
+    body.innerHTML=h;
 }
 function toggleMyConsole(btn,c){
     var my=getMyConsoles();
@@ -2915,8 +2973,8 @@ async function _doDeleteAccount(){
         if(hash!==userData.hash){errEl.textContent='Contraseña incorrecta';btn.disabled=false;btn.textContent='Eliminar mi cuenta permanentemente';return;}
         if(uname===ADMIN_USERNAME){errEl.textContent='La cuenta de administrador no se puede eliminar';btn.disabled=false;btn.textContent='Eliminar mi cuenta permanentemente';return;}
         btn.textContent='Eliminando cuenta...';
-        try{await fetch(CLOUD_API+'/'+encodeURIComponent('lib_'+uname),{method:'DELETE',credentials:'same-origin'});}catch(e){}
-        try{await fetch(CLOUD_API+'/'+encodeURIComponent('profile_'+uname),{method:'DELETE',credentials:'same-origin'});}catch(e){}
+        try{await fetch(PROXY_ORIGIN+'/kv/delete?key='+encodeURIComponent('lib_'+uname));}catch(e){}
+        try{await fetch(PROXY_ORIGIN+'/kv/delete?key='+encodeURIComponent('profile_'+uname));}catch(e){}
         if(CATALOG_API){try{await fetch(CATALOG_API+'/'+encodeURIComponent(uname),{method:'DELETE',credentials:'same-origin'});}catch(e){}}
         delete idx.users[uname];
         await _saveUsersIndex();
@@ -4949,7 +5007,7 @@ function openSettings(){
     if(acEl){
         if(_currentUser){
             var roleBadge=admin?'<span style="font-size:0.6rem;font-weight:700;color:#000;background:var(--accent);padding:1px 6px;border-radius:4px;margin-left:4px">ADMIN</span>':'<span style="font-size:0.6rem;font-weight:600;color:var(--text3);background:rgba(255,255,255,0.06);padding:1px 6px;border-radius:4px;margin-left:4px">Usuario</span>';
-            acEl.innerHTML='<div style="display:flex;align-items:center;gap:8px"><div style="width:8px;height:8px;border-radius:50%;background:var(--green)"></div><span style="font-size:0.82rem;font-weight:600">@'+escHtml(_currentUser.id)+'</span>'+roleBadge+'<button onclick="doLogout()" style="margin-left:auto;background:none;border:1px solid var(--glass-border);color:var(--red);font-size:0.72rem;font-weight:600;padding:4px 10px;border-radius:6px;cursor:pointer;font-family:inherit">Cerrar sesión</button></div><div style="font-size:0.65rem;color:var(--text3);margin-top:4px">Tu biblioteca se sincroniza con tu cuenta</div>';
+            acEl.innerHTML='<div style="display:flex;align-items:center;gap:8px"><div style="width:8px;height:8px;border-radius:50%;background:var(--green)"></div><span style="font-size:0.82rem;font-weight:600">@'+escHtml(_currentUser.id)+'</span>'+roleBadge+'<button onclick="doLogout()" style="margin-left:auto;background:none;border:1px solid var(--glass-border);color:var(--red);font-size:0.72rem;font-weight:600;padding:4px 10px;border-radius:6px;cursor:pointer;font-family:inherit">Cerrar sesión</button></div><div style="font-size:0.65rem;color:var(--text3);margin-top:4px">Tu biblioteca se sincroniza con tu cuenta</div>'+(admin?'<button onclick="openAdminStats()" style="width:100%;margin-top:0.6rem;padding:0.5rem;background:rgba(250,204,21,0.08);border:1px solid rgba(250,204,21,0.25);border-radius:8px;color:var(--accent);font-size:0.78rem;font-weight:700;font-family:inherit;cursor:pointer">📊 Estadísticas de usuarios</button>':'');
         } else {
             acEl.innerHTML='<div style="font-size:0.72rem;color:var(--text3)">No hay sesión activa</div>';
         }
