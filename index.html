@@ -431,8 +431,9 @@
             #app{max-width:1100px;margin:0 auto;box-shadow:0 0 60px rgba(0,0,0,0.4);border-left:1px solid var(--border);border-right:1px solid var(--border)}
             body{overflow-y:auto}
             .cover-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px;padding:0.75rem 1.5rem}
-            .modal{max-width:640px!important;left:50%;right:auto;transform:translate(-50%,100%);border-radius:24px 24px 0 0}
-            .sheet{max-width:640px!important}
+            .modal{max-width:640px}
+            .sheet{max-width:640px!important;left:50%!important;right:auto!important;transform:translateX(-50%) translateY(100%)}
+            .sheet.open{transform:translateX(-50%) translateY(0)!important}
             button,.filter-tab,.cover,.header-btn,select{cursor:pointer}
         }
         @media(max-width:360px){
@@ -445,7 +446,7 @@
         }
 
         /* ===== SCROLL-TO-TOP ===== */
-        .scroll-top-btn{position:fixed;bottom:calc(var(--nav-h) + var(--safe-bottom) + 16px);right:16px;width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,rgba(19,19,32,0.9),rgba(13,13,24,0.95));backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);color:var(--accent);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:39;opacity:0;transform:translateY(20px);transition:all 0.3s ease;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,0.4)}
+        .scroll-top-btn{position:fixed;bottom:calc(var(--nav-h) + var(--safe-bottom) + 22px);right:16px;width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,rgba(19,19,32,0.9),rgba(13,13,24,0.95));backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);color:var(--accent);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:39;opacity:0;transform:translateY(20px);transition:all 0.3s ease;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,0.4)}
         .scroll-top-btn.visible{opacity:1;transform:translateY(0);pointer-events:auto}
         .scroll-top-btn:active{transform:scale(0.9)}
         .scroll-top-btn svg{width:18px;height:18px}
@@ -466,12 +467,9 @@
     <div class="view" id="viewBuscar">
         <div class="view-header"><span class="header-title">Buscar</span></div>
         <div class="view-scroll">
-            <div class="search-bar"><input type="text" id="libSearchInput" placeholder="Buscar en tu biblioteca..." oninput="debounceSearch(searchLibrary,150)"></div>
-            <div id="libSearchResults"></div>
+            <div class="search-bar"><input type="text" id="unifiedSearchInput" placeholder="Buscar juegos..." oninput="debounceSearch(unifiedSearch,250)" onkeydown="if(event.key==='Enter'){event.preventDefault();unifiedSearch(true)}"><button onclick="unifiedSearch(true)" id="rawgBtn">Buscar</button></div>
+            <div id="unifiedSearchResults"></div>
             <div id="buscarTrendingResults"></div>
-            <div class="search-divider">Buscar juegos</div>
-            <div class="search-bar"><input type="text" id="rawgInput" placeholder="Buscar juegos online..." onkeydown="if(event.key==='Enter'){event.preventDefault();searchRAWG()}"><button onclick="searchRAWG()" id="rawgBtn">Buscar</button></div>
-            <div id="rawgResults"></div>
         </div>
     </div>
     <!-- EXPLORAR -->
@@ -651,7 +649,7 @@
 <script>
 lucide.createIcons();
 function scrollToTop(){var s=document.querySelector('.view.active .view-scroll');if(s)s.scrollTo({top:0,behavior:'smooth'});}
-document.addEventListener('scroll',function(){var btn=document.getElementById('scrollTopBtn');if(!btn)return;var s=document.querySelector('.view.active .view-scroll');btn.classList.toggle('visible',s&&s.scrollTop>300);},true);
+document.addEventListener('scroll',function(){var btn=document.getElementById('scrollTopBtn');if(!btn)return;var modalOpen=document.querySelector('.modal-overlay.open, .sheet.open, .gd-sheet.open');if(modalOpen){btn.classList.remove('visible');return;}var s=document.querySelector('.view.active .view-scroll');btn.classList.toggle('visible',s&&s.scrollTop>300);},true);
 var _searchTimer=null;function debounceSearch(fn,delay){clearTimeout(_searchTimer);_searchTimer=setTimeout(fn,delay||250);}
 var _navArrowSvg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
 function scrollCarousel(btn,dir){var wrap=btn.closest('.carousel-wrap');if(!wrap)return;var c=wrap.querySelector('.carousel');if(!c)return;var amount=c.clientWidth*0.75;c.scrollBy({left:dir*amount,behavior:'smooth'});}
@@ -1491,10 +1489,11 @@ function showView(name){
     document.getElementById('view'+name.charAt(0).toUpperCase()+name.slice(1)).classList.add('active');
     document.querySelectorAll('.nav-btn[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));
     document.getElementById('bottomNav').style.display='';
+    var _stb=document.getElementById('scrollTopBtn');if(_stb)_stb.classList.remove('visible');
     if(name==='inicio')renderInicio();
     if(name==='explorar')renderExplorar();
     if(name==='perfil')renderPerfil();
-    if(name==='buscar'){document.getElementById('libSearchInput').value='';document.getElementById('libSearchResults').innerHTML='';renderLibAll();loadTrendingRawg('buscarTrendingResults');}
+    if(name==='buscar'){document.getElementById('unifiedSearchInput').value='';document.getElementById('unifiedSearchResults').innerHTML='';renderLibAll();loadTrendingRawg('buscarTrendingResults');}
 }
 
 var _editSvg='<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
@@ -1542,7 +1541,8 @@ function renderCover(g){
     var statusSub=g.status?'<div class="cover-status" style="color:'+sc+'">'+_statusEmoji+' '+escHtml(_statusText)+'</div>':'';
     var yearSub=g.releaseYear?'<div class="cover-year">'+g.releaseYear+'</div>':'';
     var fmtTag=g.formato?'<div style="padding:0 4px"><span class="cover-format" style="background:'+(g.formato==='Digital'?'rgba(90,200,250,0.85)':g.formato==='Físico'?'rgba(255,149,0,0.85)':'rgba(76,217,100,0.85)')+'">'+escHtml(g.formato)+'</span></div>':'';
-    return '<div class="cover" onclick="openSheet(\''+g.id+'\')"><div class="cover-img">'+inner+badge+dlcTag+critTag+platTag+'<button class="cover-edit" onclick="event.stopPropagation();openDatosSheet(\''+g.id+'\')" title="Editar">'+_editSvg+'</button></div><div class="cover-title">'+escHtml(g.name)+'</div>'+statusSub+fmtTag+yearSub+'</div>';
+    var critLabel=_critScore?'<div style="padding:2px 4px 0;font-size:0.62rem;color:var(--text3)">Nota De La Crítica: <span style="color:var(--text2);font-weight:700">'+Math.round(_critScore)+'</span></div>':'';
+    return '<div class="cover" onclick="openSheet(\''+g.id+'\')"><div class="cover-img">'+inner+badge+dlcTag+critTag+platTag+'<button class="cover-edit" onclick="event.stopPropagation();openDatosSheet(\''+g.id+'\')" title="Editar">'+_editSvg+'</button></div><div class="cover-title">'+escHtml(g.name)+'</div>'+statusSub+fmtTag+critLabel+yearSub+'</div>';
 }
 
 function renderCarousel(title,statusFilter){
@@ -2621,8 +2621,8 @@ async function scrollToRecs(){
 }
 function addFromRec(rawgId,name){
     showView('buscar');
-    const input=document.getElementById('rawgInput');
-    if(input){input.value=name;searchRAWG();}
+    const input=document.getElementById('unifiedSearchInput');
+    if(input){input.value=name;unifiedSearch(true);}
 }
 
 var _modeCache={};var _activeModeTag=null;
@@ -2758,7 +2758,7 @@ function _renderSagasInicio(data){
     else el.insertAdjacentHTML('beforeend',h);
 }
 
-let profileFilter='all';var profileSort='name';
+let profileFilter='all';var profileSort='name';var profileSearchQ='';
 let formatoFilter='all';
 var platFilter=new Set();
 function renderPerfil(){
@@ -2825,7 +2825,8 @@ function renderPerfil(){
             h+='</div>';
         }
         if(games.length&&_isAdmin()){h+='<div style="text-align:right;padding:0 0.3rem 0.3rem;display:flex;justify-content:flex-end;gap:0.8rem">';h+='<button onclick="bulkRefreshCovers()" style="background:none;border:none;color:var(--accent);font-size:0.72rem;font-weight:600;cursor:pointer;font-family:inherit">🔄 Actualizar portadas</button>';h+='<button onclick="gdClearCovers()" style="background:none;border:none;color:var(--text3);font-size:0.72rem;font-weight:500;cursor:pointer;font-family:inherit">🗑 Limpiar portadas</button>';h+='<button onclick="gdClearCustomCovers()" style="background:none;border:none;color:var(--red);font-size:0.72rem;font-weight:500;cursor:pointer;font-family:inherit">🗑 Borrar personalizadas</button></div>';}
-        h+='<div style="padding:0.3rem 0.3rem 0.5rem"><select id="profileSortSelect" onchange="profileSort=this.value;renderPerfilGrid()" style="width:100%;padding:0.45rem 0.7rem;border-radius:9px;border:1px solid var(--glass-border);background:var(--bg-surface);color:var(--text);font-size:0.8rem;font-family:inherit"><option value="name">Ordenar: A-Z</option><option value="rating_desc">Ordenar: Mi nota (mayor a menor)</option><option value="rating_asc">Ordenar: Mi nota (menor a mayor)</option><option value="crit_desc">Ordenar: Crítica (mayor a menor)</option><option value="crit_asc">Ordenar: Crítica (menor a mayor)</option></select></div>';
+        h+='<div style="padding:0.3rem 0.3rem 0.4rem"><input type="text" id="profileSearchInput" placeholder="Buscar en mis juegos..." oninput="profileSearchQ=this.value;renderPerfilGrid()" style="width:100%;padding:0.5rem 0.8rem;border-radius:9px;border:1px solid var(--glass-border);background:var(--bg-surface);color:var(--text);font-size:0.8rem;font-family:inherit;box-sizing:border-box"></div>';
+        h+='<div style="padding:0.3rem 0.3rem 0.5rem"><select id="profileSortSelect" onchange="profileSort=this.value;renderPerfilGrid()" style="width:100%;padding:0.45rem 0.7rem;border-radius:9px;border:1px solid var(--glass-border);background:var(--bg-surface);color:var(--text);font-size:0.8rem;font-family:inherit"><option value="name">Ordenar: A-Z</option><option value="crit_desc">Ordenar: Crítica (mayor a menor)</option><option value="crit_asc">Ordenar: Crítica (menor a mayor)</option></select></div>';
         h+='<div class="cover-grid" id="profileGrid"></div>';
         if(!games.length)h='<div class="empty-state" style="min-height:30vh"><p>Todavia no agregaste juegos</p><button class="empty-btn" onclick="openAddModal()">Agregar juego</button></div>';
     } else if(profileTab==='sagas'){
@@ -2884,6 +2885,10 @@ function renderPerfilGrid(){
     let list=profileFilter==='all'?[...games]:profileFilter==='_none'?games.filter(g=>!g.status):games.filter(g=>g.status===profileFilter);
     if(formatoFilter==='_none')list=list.filter(g=>!g.formato);else if(formatoFilter!=='all')list=list.filter(g=>g.formato===formatoFilter);
     if(platFilter.size)list=list.filter(_gameMatchesPlat);
+    if(profileSearchQ&&profileSearchQ.trim()){
+        var _nq=_normText(profileSearchQ);
+        list=list.filter(function(g){return _normText(g.name).includes(_nq)||_normText(g.saga).includes(_nq);});
+    }
     if(!list.length){el.innerHTML='<div class="empty-state" style="min-height:20vh"><p>No hay juegos en esta categoria</p></div>';return;}
     var isAllFilters=profileFilter==='all'&&formatoFilter==='all'&&platFilter.size===0;
     var sortSel=document.getElementById('profileSortSelect');if(sortSel)sortSel.value=profileSort;
@@ -4761,15 +4766,41 @@ async function saveDato(field,value){
 }
 
 // ===== SEARCH =====
-function searchLibrary(){
-    const q=document.getElementById('libSearchInput').value.toLowerCase().trim();
-    const el=document.getElementById('libSearchResults');
+function _normText(s){return(s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
+async function unifiedSearch(forceExternal){
+    const q=document.getElementById('unifiedSearchInput').value.trim();
+    const el=document.getElementById('unifiedSearchResults');
     if(!q){renderLibAll();return;}
-    const results=games.filter(g=>g.name.toLowerCase().includes(q)||(g.saga||'').toLowerCase().includes(q)||g.platform.toLowerCase().includes(q));
-    el.innerHTML=results.length?'<div class="lib-grid">'+results.map(g=>renderCover(g)).join('')+'</div>':'<div class="search-hint">No se encontraron juegos</div>';
+    const nq=_normText(q);
+    const libResults=games.filter(g=>_normText(g.name).includes(nq)||_normText(g.saga).includes(nq)||_normText(g.platform).includes(nq));
+    var h='';
+    if(libResults.length){
+        h+='<div class="search-divider">En tu biblioteca ('+libResults.length+')</div>';
+        h+='<div class="lib-grid">'+libResults.map(g=>renderCover(g)).join('')+'</div>';
+    }
+    el.innerHTML=h;
+    if(!forceExternal&&!libResults.length)return;
+    var extEl=document.createElement('div');
+    extEl.id='unifiedExternalResults';
+    extEl.innerHTML='<div class="search-divider">Buscando en línea...</div>';
+    el.appendChild(extEl);
+    try{
+        var data=await _igdbPost('igdb_search',{query:q,limit:'16'});
+        var results=(data&&data.results)?data.results:[];
+        var ownedNames=new Set(games.map(g=>_normText(g.name)));
+        results=results.filter(r=>!ownedNames.has(_normText(r.name)));
+        if(!results.length){
+            extEl.innerHTML='<div class="search-divider">Resultados de búsqueda</div><div class="search-hint">'+(libResults.length?'No hay más resultados online para "'+escHtml(q)+'"':'Sin resultados para "'+escHtml(q)+'"')+(window._lastIgdbErr?'<br><span style="color:var(--red);font-size:0.7rem">Debug: '+escHtml(window._lastIgdbErr)+'</span>':'')+'</div>';
+            return;
+        }
+        var cardsH='';for(var i=0;i<results.length;i++)cardsH+=_renderSearchItem(results[i]);
+        extEl.innerHTML='<div class="search-divider">Resultados de búsqueda ('+results.length+')</div><div class="search-results">'+cardsH+'</div>';
+    }catch(e){
+        extEl.innerHTML='<div class="search-divider">Resultados de búsqueda</div><div class="search-hint">Error: '+escHtml(e.message||String(e))+'</div>';
+    }
 }
 function renderLibAll(){
-    const el=document.getElementById('libSearchResults');
+    const el=document.getElementById('unifiedSearchResults');
     if(!games.length){el.innerHTML='<div class="search-hint">Tu biblioteca esta vacia</div>';return;}
     var sorted=[...games].sort(function(a,b){return a.name.localeCompare(b.name)});
     var cards='';for(var i=0;i<sorted.length;i++)cards+=renderCover(sorted[i]);
