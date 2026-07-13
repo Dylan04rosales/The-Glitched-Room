@@ -1524,7 +1524,7 @@ function renderCover(g){
     var badge=g.edition?'<span class="cover-badge">'+escHtml(g.edition)+'</span>':'';
     var dlcTag=g.gameCategory==='DLC'?'<span style="position:absolute;top:6px;left:6px;z-index:3;font-size:0.5rem;font-weight:700;padding:1px 5px;border-radius:3px;background:rgba(251,191,36,0.25);color:#fbbf24;text-transform:uppercase;letter-spacing:0.3px">DLC</span>':'';
     var _critScore=g.metacriticScore||_avgScore(g);
-    var critTag=_critScore?'<span style="position:absolute;top:6px;right:6px;z-index:3;font-size:0.6rem;font-weight:800;padding:2px 5px;border-radius:4px;background:'+(_critScore>=75?'rgba(76,217,100,0.9)':_critScore>=50?'rgba(255,159,10,0.9)':'rgba(255,69,58,0.9)')+';color:#000">'+Math.round(_critScore)+'</span>':'';
+    var critTag='';
     var _coverPlats=_gameAllPlats(g);
     var platTag='';
     if(_coverPlats.length){platTag='<div class="cover-plats">';for(var _cpi=0;_cpi<_coverPlats.length;_cpi++){var _cp=_coverPlats[_cpi];var _cpc=PLAT_COLORS[_cp]||getBrandColor(_cp);platTag+='<span class="cover-plat" style="background:'+_cpc+'">'+escHtml(_cp)+'</span>';}platTag+='</div>';}
@@ -1541,7 +1541,7 @@ function renderCover(g){
     var statusSub=g.status?'<div class="cover-status" style="color:'+sc+'">'+_statusEmoji+' '+escHtml(_statusText)+'</div>':'';
     var yearSub=g.releaseYear?'<div class="cover-year">'+g.releaseYear+'</div>':'';
     var fmtTag=g.formato?'<div style="padding:0 4px"><span class="cover-format" style="background:'+(g.formato==='Digital'?'rgba(90,200,250,0.85)':g.formato==='Físico'?'rgba(255,149,0,0.85)':'rgba(76,217,100,0.85)')+'">'+escHtml(g.formato)+'</span></div>':'';
-    var critLabel=_critScore?'<div style="padding:2px 4px 0;font-size:0.62rem;color:var(--text3)">Nota De La Crítica: <span style="color:var(--text2);font-weight:700">'+Math.round(_critScore)+'</span></div>':'';
+    var critLabel=_critScore?'<div style="padding:2px 4px 0;font-size:0.62rem;color:var(--text3)">Nota De La Crítica: <span style="color:var(--green);font-weight:700">'+Math.round(_critScore)+'</span></div>':'';
     return '<div class="cover" onclick="openSheet(\''+g.id+'\')"><div class="cover-img">'+inner+badge+dlcTag+critTag+platTag+'<button class="cover-edit" onclick="event.stopPropagation();openDatosSheet(\''+g.id+'\')" title="Editar">'+_editSvg+'</button></div><div class="cover-title">'+escHtml(g.name)+'</div>'+statusSub+fmtTag+critLabel+yearSub+'</div>';
 }
 
