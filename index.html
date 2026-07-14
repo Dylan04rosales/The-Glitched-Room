@@ -2301,7 +2301,7 @@ async function _loadExploreInfinite(){
     var myConsoles=getMyConsoles();
     var platStr=myConsoles.size?Array.from(myConsoles).join(','):'';
     var _owned=games.filter(function(g){return g.status!=='Quiero';});
-    var highRated=_owned.filter(function(g){return _avgScore(g)>=70;});
+    var highRated=_owned.filter(function(g){return _criticOnlyScore(g)>=70;});
     var completed=_owned.filter(function(g){return g.status==='Terminado';});
     var pool=[].concat(highRated,highRated,completed,_owned);
     var picks=[];var pickedNames=new Set();
@@ -2380,7 +2380,7 @@ async function loadExploreRecs(el){
         }catch(e0){_exploreRecsLoading=false;el.innerHTML='<div style="padding:2rem;text-align:center;color:var(--red);font-size:0.82rem">Error: '+escHtml((e0&&e0.message)||String(e0))+'</div>';}
         return;
     }
-    var highRated=_owned.filter(function(g){return _avgScore(g)>=70;});
+    var highRated=_owned.filter(function(g){return _criticOnlyScore(g)>=70;});
     var completed=_owned.filter(function(g){return g.status==='Terminado';});
     var pool=[].concat(highRated,highRated,completed,_owned);
     var picks=[];var pickedNames=new Set();
@@ -2572,7 +2572,7 @@ async function loadRecommendations(append){
         return;
     }
     if(append){var btn=document.getElementById('recsMoreBtn');if(btn){btn.disabled=true;btn.textContent='Cargando...';}}
-    var highRated=_owned.filter(function(g){return _avgScore(g)>=70;});
+    var highRated=_owned.filter(function(g){return _criticOnlyScore(g)>=70;});
     var completed=_owned.filter(function(g){return g.status==='Terminado';});
     var pool=[].concat(highRated,highRated,completed,_owned);
     const seedCount=append?3:4;
@@ -2970,6 +2970,13 @@ function _scoreChip(val,max10,label){
     if(!val)return '<div style="flex:1;text-align:center"><div style="font-size:0.58rem;color:var(--text3);margin-bottom:2px">'+label+'</div><div style="font-size:0.72rem;color:var(--text3);font-weight:600">—</div></div>';
     var c=scoreColor(val,max10);
     return '<div style="flex:1;text-align:center"><div style="font-size:0.58rem;color:var(--text3);margin-bottom:2px">'+label+'</div><div style="font-size:0.82rem;font-weight:700;color:'+c+'">'+val+'</div></div>';
+}
+function _criticOnlyScore(g){
+    var vals=[],n100=[g.metacriticScore,g.opencriticScore],n10=[g.vandalScore,g.tdjScore,g.ignScore];
+    for(var i=0;i<n10.length;i++){if(n10[i])vals.push(n10[i]*10);}
+    for(var i=0;i<n100.length;i++){if(n100[i])vals.push(n100[i]);}
+    if(!vals.length)return 0;
+    return Math.round(vals.reduce(function(s,v){return s+v;},0)/vals.length*10)/10;
 }
 function _avgScore(g){
     var vals=[],n100=[g.metacriticScore,g.opencriticScore],n10=[g.vandalScore,g.tdjScore,g.ignScore,g.userScore];
