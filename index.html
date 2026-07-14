@@ -1284,7 +1284,7 @@ function _renderOnboardingSuggestions(perConsole){
             var uid='onb_'+ci+'_'+pi;
             var img=g.cover?'<img src="'+escHtml(g.cover)+'" loading="lazy" referrerpolicy="no-referrer" style="width:36px;height:48px;object-fit:cover;border-radius:6px;flex-shrink:0">':'<div style="width:36px;height:48px;border-radius:6px;background:var(--bg-surface);flex-shrink:0"></div>';
             h+='<label style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0.2rem;cursor:pointer" for="'+uid+'">';
-            h+='<input type="checkbox" id="'+uid+'" data-name="'+escHtml(g.name)+'" data-cover="'+escHtml(g.cover||'')+'" data-plat="'+escHtml(lbl)+'" data-mc="'+(g.metacritic||0)+'" data-year="'+(g.year||0)+'" style="width:16px;height:16px;flex-shrink:0">';
+            h+='<input type="checkbox" id="'+uid+'" data-name="'+escHtml(g.name)+'" data-cover="'+escHtml(g.cover||'')+'" data-plat="'+escHtml(lbl)+'" data-mc="'+(g.metacritic||0)+'" data-ur="'+(g.userRating||0)+'" data-year="'+(g.year||0)+'" style="width:16px;height:16px;flex-shrink:0">';
             h+=img;
             h+='<div style="min-width:0"><div style="font-size:0.82rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(g.name)+'</div><div style="font-size:0.68rem;color:var(--text3)">'+(g.year||'')+(g.metacritic?' · '+g.metacritic:'')+'</div></div>';
             h+='</label>';
@@ -1301,7 +1301,7 @@ function _onboardingAddSelected(){
     var checks=document.querySelectorAll('#onboardingBody input[type=checkbox]:checked');
     var count=0;
     checks.forEach(function(chk){
-        var g={id:genId(),name:chk.dataset.name,platform:chk.dataset.plat,status:'Quiero',saga:'',completion:0,trophiesEarned:0,trophiesTotal:0,rating:0,coverUrl:chk.dataset.cover||'',edition:'',formato:'',vandalScore:0,tdjScore:0,ignScore:0,metacriticScore:parseInt(chk.dataset.mc)||0,opencriticScore:0,userScore:0,notes:'',releaseYear:parseInt(chk.dataset.year)||0,gameCategory:'',addedDate:new Date().toISOString()};
+        var g={id:genId(),name:chk.dataset.name,platform:chk.dataset.plat,status:'Quiero',saga:'',completion:0,trophiesEarned:0,trophiesTotal:0,rating:0,coverUrl:chk.dataset.cover||'',edition:'',formato:'',vandalScore:0,tdjScore:0,ignScore:0,metacriticScore:parseInt(chk.dataset.mc)||0,opencriticScore:0,userScore:Math.round((parseInt(chk.dataset.ur)||0)/10*10)/10,notes:'',releaseYear:parseInt(chk.dataset.year)||0,gameCategory:'',addedDate:new Date().toISOString()};
         games.push(g);count++;
     });
     if(count){save();refreshViews();showToast(count+' juego'+(count===1?'':'s')+' agregado'+(count===1?'':'s'),'success');}
@@ -1957,16 +1957,20 @@ function _ownedBases(excludeWishlist){
     }
     return s;
 }
+function _stripEditionSuffix(s){
+    return(s||'').toLowerCase().trim().replace(/\s*[:\-–—]?\s*(remastered|remake|definitive edition|goty edition|game of the year edition|complete edition|deluxe edition|ultimate edition|standard edition|directors cut|director'?s cut|enhanced edition|special edition|anniversary edition|redux|hd)\s*$/i,'').trim();
+}
 function _isOwned(name){
     var bases=_ownedBases(true);
     var n=name.toLowerCase().trim();
     if(bases.has(n)||bases.has(_getBaseGameName(name)))return true;
     var core=n.replace(/^(marvel'?s?|tom clancy'?s?|sid meier'?s?|disney'?s?)\s+/i,'');
     if(core!==n&&bases.has(core))return true;
+    var nStripped=_stripEditionSuffix(n);
     for(var i=0;i<games.length;i++){
         if(games[i].status==='Quiero')continue;
         var gn=games[i].name.toLowerCase().trim();
-        if(gn.indexOf(n)===0||n.indexOf(gn)===0)return true;
+        if(_stripEditionSuffix(gn)===nStripped)return true;
         var gc=gn.replace(/^(marvel'?s?|tom clancy'?s?|sid meier'?s?|disney'?s?)\s+/i,'');
         if(gc===core)return true;
     }
@@ -2510,7 +2514,9 @@ function _groupDlcs(results){
 var _dlcExpandSvg='<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
 function _renderExploreCard(g,dlcs,plusSvg){
     var owned=_isOwned(g.name);
-    var mc=g.metacritic?'<span style="font-size:0.55rem;font-weight:700;padding:1px 4px;border-radius:3px;background:rgba(76,217,100,0.2);color:var(--green);position:absolute;top:6px;right:6px;z-index:3">'+g.metacritic+'</span>':'';
+    var _critS=g.metacritic||g.userRating||0;
+    var mc='';
+    var critLabelExp=_critS?'<div style="font-size:0.58rem;color:var(--text3);padding:0 2px;margin-top:2px">Nota De La Crítica: <span style="color:var(--green);font-weight:700">'+Math.round(_critS)+'</span></div>':'';
     var ownedBadge=owned?'<span class="explore-owned-badge" style="font-size:0.5rem;font-weight:700;padding:1px 5px;border-radius:3px;background:rgba(245,197,24,0.25);color:var(--accent);position:absolute;top:6px;left:6px;z-index:3">✓</span>':'';
     var img=g.cover?'<img src="'+escHtml(g.cover)+'" loading="lazy" referrerpolicy="no-referrer" alt="" style="object-fit:cover">':'<div class="cover-placeholder" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:800;color:rgba(255,255,255,0.15)">'+escHtml(getInitials(g.name))+'</div>';
     var _csn=escHtml(g.name).replace(/'/g,"\\'");var _ccov=escHtml(g.cover||'').replace(/'/g,"\\'");var _cplts=escHtml(g.platforms||'').replace(/'/g,"\\'");
@@ -2545,7 +2551,7 @@ function _renderExploreCard(g,dlcs,plusSvg){
         }
         dlcHtml+='</div></div>';
     }
-    return '<div class="rec-card" onclick="_igdbQuickAdd(\''+_csn+'\',\''+_ccov+'\',\''+_cplts+'\','+(g.metacritic||0)+','+(g.year||0)+')"><div class="rec-card-img">'+img+mc+ownedBadge+addBtn+'</div><div class="rec-card-title">'+escHtml(g.name)+'</div><div class="rec-card-meta">'+meta+'</div>'+plats+dlcHtml+'</div>';
+    return '<div class="rec-card" onclick="_igdbQuickAdd(\''+_csn+'\',\''+_ccov+'\',\''+_cplts+'\','+(g.metacritic||0)+','+(g.year||0)+')"><div class="rec-card-img">'+img+mc+ownedBadge+addBtn+'</div><div class="rec-card-title">'+escHtml(g.name)+'</div><div class="rec-card-meta">'+meta+'</div>'+critLabelExp+plats+dlcHtml+'</div>';
 }
 var _recsLoading=false;
 async function loadRecommendations(append){
@@ -4915,7 +4921,9 @@ function _isDlcResult(g){
 function _renderSearchItem(g){
     var plats=g.platforms||'';
     var year=g.year?String(g.year):'';
-    var mc=g.metacritic?'<span class="search-result-mc '+mcClass(g.metacritic,false)+'">'+g.metacritic+'</span>':'';
+    var _critS2=g.metacritic||g.userRating||0;
+    var mc='';
+    var critLabelSr=_critS2?'<div style="font-size:0.62rem;color:var(--text3);margin-top:2px">Nota De La Crítica: <span style="color:var(--green);font-weight:700">'+Math.round(_critS2)+'</span></div>':'';
     var img=g.cover?'<img src="'+escHtml(g.cover)+'" loading="lazy" referrerpolicy="no-referrer">':'';
     var inLib=_isOwned(g.name||'');
     var libBadge=inLib?'<span style="padding:2px 7px;border-radius:6px;font-size:0.6rem;font-weight:700;background:rgba(52,211,153,0.15);color:var(--green);flex-shrink:0;white-space:nowrap">En biblioteca</span>':'';
@@ -4924,7 +4932,7 @@ function _renderSearchItem(g){
     var catNum=_cat?1:(g.category||0);
     var catColor=catNum===0?'rgba(99,102,241,0.15);color:var(--accent)':catNum===1||catNum===2||catNum===4?'rgba(251,191,36,0.15);color:#fbbf24':catNum===8||catNum===9||catNum===10?'rgba(52,211,153,0.15);color:var(--green)':'rgba(255,255,255,0.1);color:var(--text-secondary)';
     var catBadge='<span style="padding:2px 7px;border-radius:6px;font-size:0.55rem;font-weight:700;background:'+catColor+';flex-shrink:0;white-space:nowrap;text-transform:uppercase;letter-spacing:0.3px">'+escHtml(catLabel)+'</span>';
-    return '<div class="search-result" onclick="previewGame(this)" data-name="'+escHtml(g.name)+'" data-cover="'+escHtml(g.cover||'')+'" data-mc="'+(g.metacritic||'')+'" data-platforms="'+escHtml(plats)+'" data-year="'+escHtml(year)+'" data-user-rating="'+(g.userRating||'')+'" data-summary="'+escHtml(g.summary||'')+'" data-genres="'+escHtml(g.genres||'')+'" data-igdb-id="'+(g.id||'')+'" data-category="'+_cat+'"><div class="search-result-cover">'+img+'</div><div class="search-result-info"><div class="search-result-name">'+escHtml(g.name)+'</div><div class="search-result-meta">'+escHtml(plats.substring(0,50)+(plats.length>50?'...':''))+(year?' · '+year:'')+'</div><div style="display:flex;gap:4px;margin-top:2px">'+catBadge+'</div></div>'+libBadge+mc+'</div>';
+    return '<div class="search-result" onclick="previewGame(this)" data-name="'+escHtml(g.name)+'" data-cover="'+escHtml(g.cover||'')+'" data-mc="'+(g.metacritic||'')+'" data-platforms="'+escHtml(plats)+'" data-year="'+escHtml(year)+'" data-user-rating="'+(g.userRating||'')+'" data-summary="'+escHtml(g.summary||'')+'" data-genres="'+escHtml(g.genres||'')+'" data-igdb-id="'+(g.id||'')+'" data-category="'+_cat+'"><div class="search-result-cover">'+img+'</div><div class="search-result-info"><div class="search-result-name">'+escHtml(g.name)+'</div><div class="search-result-meta">'+escHtml(plats.substring(0,50)+(plats.length>50?'...':''))+(year?' · '+year:'')+'</div><div style="display:flex;gap:4px;margin-top:2px">'+catBadge+'</div>'+critLabelSr+'</div>'+libBadge+mc+'</div>';
 }
 function _renderRawgResults(results,q,container){
     if(!results.length){container.innerHTML='<div class="search-hint">Sin resultados para "'+escHtml(q)+'"</div>';return;}
