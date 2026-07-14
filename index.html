@@ -93,7 +93,7 @@
         .cover-badge{position:absolute;top:6px;right:6px;padding:3px 8px;border-radius:6px;font-size:0.55rem;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#000;z-index:3;box-shadow:0 2px 8px rgba(245,197,24,0.3)}
         .cover-format{display:inline-block;padding:2px 7px;border-radius:5px;font-size:0.5rem;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#fff;line-height:1.3;margin-top:3px}
         .cover-plats{position:absolute;bottom:6px;left:6px;display:flex;gap:3px;flex-wrap:wrap;z-index:3;max-width:calc(100% - 12px)}
-        .cover-plat{padding:2px 7px;border-radius:5px;font-size:0.48rem;font-weight:700;letter-spacing:0.03em;color:#fff;line-height:1.3;border:1px solid rgba(255,255,255,0.15)}
+        .cover-plat{padding:2px 7px;border-radius:5px;font-size:0.48rem;font-weight:700;letter-spacing:0.03em;color:#fff;line-height:1.3;border:1px solid rgba(255,255,255,0.15);max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,0.5)}
         .cover-picker{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:0.5rem}
         .cover-pick{border-radius:var(--radius-xs);overflow:hidden;cursor:pointer;aspect-ratio:3/4;border:2px solid transparent;position:relative;transition:all var(--transition-fast)}
         .cover-pick:hover{transform:scale(1.03);border-color:rgba(255,255,255,0.15)}
@@ -428,13 +428,19 @@
             .cover-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
         }
         @media(min-width:900px){
-            #app{max-width:1100px;margin:0 auto;box-shadow:0 0 60px rgba(0,0,0,0.4);border-left:1px solid var(--border);border-right:1px solid var(--border)}
+            #app{max-width:1400px;margin:0 auto;box-shadow:0 0 60px rgba(0,0,0,0.4);border-left:1px solid var(--border);border-right:1px solid var(--border)}
             body{overflow-y:auto}
-            .cover-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px;padding:0.75rem 1.5rem}
+            .cover-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:18px;padding:0.75rem 2rem}
+            .explore-grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))!important}
+            .search-results{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))!important}
             .modal{max-width:640px}
             .sheet{max-width:640px!important;left:50%!important;right:auto!important;transform:translateX(-50%) translateY(100%)}
             .sheet.open{transform:translateX(-50%) translateY(0)!important}
             button,.filter-tab,.cover,.header-btn,select{cursor:pointer}
+        }
+        @media(min-width:1300px){
+            #app{max-width:1650px}
+            .cover-grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
         }
         @media(max-width:360px){
             .cover,.rec-card{width:115px}
@@ -1523,7 +1529,7 @@ function renderCover(g){
     var critTag='';
     var _coverPlats=_gameAllPlats(g);
     var platTag='';
-    if(_coverPlats.length){platTag='<div class="cover-plats">';for(var _cpi=0;_cpi<_coverPlats.length;_cpi++){var _cp=_coverPlats[_cpi];var _cpc=PLAT_COLORS[_cp]||getBrandColor(_cp);platTag+='<span class="cover-plat" style="background:'+_cpc+'">'+escHtml(_cp)+'</span>';}platTag+='</div>';}
+    if(_coverPlats.length){var _cpShow=_coverPlats.slice(0,3);platTag='<div class="cover-plats">';for(var _cpi=0;_cpi<_cpShow.length;_cpi++){var _cp=_cpShow[_cpi];var _cpc=PLAT_COLORS[_cp]||getBrandColor(_cp);platTag+='<span class="cover-plat" style="background:'+_cpc+'">'+escHtml(_cp)+'</span>';}if(_coverPlats.length>3)platTag+='<span class="cover-plat" style="background:rgba(0,0,0,0.6)">+'+(_coverPlats.length-3)+'</span>';platTag+='</div>';}
     var initials=escHtml(getInitials(g.name));
     var inner;
     var _rc=_resolvedCover(g);var _fb=(_rc&&_rc.indexOf(COVERS_URL)===0&&g.coverUrl&&g.coverUrl.indexOf(COVERS_URL)<0)?g.coverUrl:'';
@@ -2796,13 +2802,12 @@ function renderPerfil(){
         h+='<div style="padding:0 1rem 0.5rem"><span style="font-size:0.72rem;color:var(--text3)">No hay sesión activa</span></div>';
     }
     h+='<div class="profile-tabs"><button class="profile-tab'+(profileTab==='juegos'?' active':'')+'" onclick="setProfileTab(\'juegos\')">Juegos</button>';
-    if(_isAdmin()){
-        h+='<button class="profile-tab'+(profileTab==='sagas'?' active':'')+'" onclick="setProfileTab(\'sagas\')">Sagas</button>';
-        if(psn)h+='<button class="profile-tab'+(profileTab==='psn'?' active':'')+'" onclick="setProfileTab(\'psn\')">PSN</button>';
-        h+='<button class="profile-tab'+(profileTab==='stats'?' active':'')+'" onclick="setProfileTab(\'stats\')">Estadisticas</button>';
-        h+='<button class="profile-tab'+(profileTab==='gestion'?' active':'')+'" onclick="setProfileTab(\'gestion\')">Gestion</button>';
-        h+='<button class="profile-tab'+(profileTab==='ratings'?' active':'')+'" onclick="setProfileTab(\'ratings\')">★ Calificaciones</button>';
-    }
+    h+='<button class="profile-tab'+(profileTab==='sagas'?' active':'')+'" onclick="setProfileTab(\'sagas\')">Sagas</button>';
+    if(psn)h+='<button class="profile-tab'+(profileTab==='psn'?' active':'')+'" onclick="setProfileTab(\'psn\')">PSN</button>';
+    h+='<button class="profile-tab'+(profileTab==='stats'?' active':'')+'" onclick="setProfileTab(\'stats\')">Estadisticas</button>';
+    if(_isAdmin())h+='<button class="profile-tab'+(profileTab==='gestion'?' active':'')+'" onclick="setProfileTab(\'gestion\')">Gestion</button>';
+    h+='<button class="profile-tab'+(profileTab==='ratings'?' active':'')+'" onclick="setProfileTab(\'ratings\')">★ Calificaciones</button>';
+    h+='<button class="profile-tab'+(profileTab==='amigos'?' active':'')+'" onclick="setProfileTab(\'amigos\')">👥 Amigos</button>';
     h+='<button class="profile-tab'+(profileTab==='cuenta'?' active':'')+'" onclick="setProfileTab(\'cuenta\')">Cuenta</button></div>';
     if(profileTab==='juegos'){
         const tabs=['all',...STATUSES];
@@ -2853,6 +2858,8 @@ function renderPerfil(){
         h+='<div id="gestionContent"></div>';
     } else if(profileTab==='ratings'){
         h+='<div id="ratingsContent"></div>';
+    } else if(profileTab==='amigos'){
+        h+='<div id="amigosContent"></div>';
     } else if(profileTab==='cuenta'){
         h+='<div id="cuentaContent"></div>';
     } else {
@@ -2865,6 +2872,7 @@ function renderPerfil(){
     if(profileTab==='stats')renderStats();
     if(profileTab==='gestion')renderGestion();
     if(profileTab==='ratings')renderRatingsTab();
+    if(profileTab==='amigos')renderAmigos();
     if(profileTab==='cuenta')renderCuentaTab();
 }
 
@@ -2959,7 +2967,7 @@ function renderRatingsTab(){
     if(!list.length){el.innerHTML='<div class="empty-state" style="min-height:20vh"><p>No hay juegos</p></div>';return;}
     var missing=games.filter(function(g){return g.name&&(!g.metacriticScore||!g.userScore);}).length;
     var header='';
-    if(missing&&_isAdmin())header='<div style="padding:0.5rem 0.75rem"><button onclick="autoFillScores(false)" style="width:100%;padding:0.6rem;background:var(--bg-card);border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:var(--accent);font-size:0.78rem;font-weight:600;font-family:inherit;cursor:pointer">Autocompletar notas ('+missing+' pendientes)</button></div>';
+    if(_isAdmin())header='<div style="padding:0.5rem 0.75rem;display:flex;flex-direction:column;gap:0.4rem">'+(missing?'<button onclick="autoFillScores(false)" style="width:100%;padding:0.6rem;background:var(--bg-card);border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:var(--accent);font-size:0.78rem;font-weight:600;font-family:inherit;cursor:pointer">Autocompletar notas ('+missing+' pendientes)</button>':'')+'<button onclick="if(confirm(\'Esto va a revisar y corregir la nota de TODOS los juegos ('+games.length+'), incluso los que ya tienen. Puede tardar. ¿Continuar?\'))autoFillScores(false,true)" style="width:100%;padding:0.6rem;background:var(--bg-card);border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:var(--text2);font-size:0.78rem;font-weight:600;font-family:inherit;cursor:pointer">🔄 Corregir nota de todos los juegos</button></div>';
     header+='<div style="display:flex;gap:6px;padding:0.3rem 0.75rem;overflow-x:auto;scrollbar-width:none">';
     var sorts=[{key:'best',label:'Mayor nota'},{key:'worst',label:'Menor nota'},{key:'name',label:'A-Z'}];
     for(var si=0;si<sorts.length;si++){var s=sorts[si];header+='<button class="filter-tab'+(_ratingsSort===s.key?' active':'')+'" onclick="_ratingsSort=\''+s.key+'\';renderRatingsTab()" style="font-size:0.72rem;padding:0.3rem 0.8rem">'+s.label+'</button>';}
@@ -3038,17 +3046,17 @@ async function _fetchOpenCriticScore(name){
         return gd&&gd.topCriticScore?Math.round(gd.topCriticScore):null;
     }catch(e){return null;}
 }
-async function autoFillScores(silent){
+async function autoFillScores(silent,forceAll){
     if(!_isAdmin()){showToast('Solo el administrador puede usar esta función','error');return;}
     if(_autoScoreRunning){if(!silent)showToast('Ya se está ejecutando, esperá…','info');return;}
-    var missing=games.filter(function(g){return g.name&&(!g.metacriticScore||!g.userScore);});
+    var missing=forceAll?games.filter(function(g){return g.name;}):games.filter(function(g){return g.name&&(!g.metacriticScore||!g.userScore);});
     if(!missing.length){if(!silent)showToast('Todos los juegos ya tienen Metacritic y User Score','info');return;}
     _autoScoreRunning=true;
     var btn=document.querySelector('[onclick*="autoFillScores"]');
     var origLabel=btn?btn.textContent:'';
     try{
     if(btn){btn.disabled=true;btn.textContent='Buscando 0/'+missing.length+'…';btn.style.opacity='0.7';}
-    if(!silent)showToast('Buscando notas para '+missing.length+' juegos…','info');
+    if(!silent)showToast((forceAll?'Corrigiendo notas de ':'Buscando notas para ')+missing.length+' juegos…','info');
     var updated=0;var done=0;
     var BATCH=4;
     for(var bi=0;bi<missing.length;bi+=BATCH){
@@ -3079,11 +3087,11 @@ async function autoFillScores(silent){
             if(!best&&igd.results.length)best=igd.results[0];
             if(best){
                 var ch=false;
-                if(best.metacritic&&!g.metacriticScore){g.metacriticScore=best.metacritic;ch=true;}
-                if(best.userRating&&!g.userScore){g.userScore=Math.round(best.userRating/10*10)/10;ch=true;}
+                if(best.metacritic&&(forceAll||!g.metacriticScore)){g.metacriticScore=best.metacritic;ch=true;}
+                if(best.userRating&&(forceAll||!g.userScore)){g.userScore=Math.round(best.userRating/10*10)/10;ch=true;}
                 if(ch)updated++;
             }
-            if(!g.opencriticScore){
+            if(forceAll||!g.opencriticScore){
                 try{var ocScore=await _fetchOpenCriticScore(g.name);if(ocScore){g.opencriticScore=ocScore;updated++;}}catch(e3){}
             }
         }
@@ -3103,6 +3111,104 @@ async function autoFillScores(silent){
     }
 }
 function setProfileTab(t){profileTab=t;renderPerfil();}
+async function renderAmigos(){
+    var el=document.getElementById('amigosContent');if(!el||!_currentUser)return;
+    el.innerHTML='<div style="padding:2rem;text-align:center;color:var(--text3);font-size:0.85rem"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 0.5rem"></div>Cargando amigos...</div>';
+    try{
+        var friends=await _dbGet('friends_'+_currentUser.username)||[];
+        var idx=await _dbGet('_users_index');
+        var now=Date.now();
+        var rows=[];
+        for(var i=0;i<friends.length;i++){
+            var fu=friends[i];
+            var ud=idx&&idx.users?idx.users[fu]:null;
+            var lib=await _dbGet('lib_'+fu);
+            var glist=Array.isArray(lib)?lib:[];
+            var pres=await _dbGet('presence_'+fu);
+            var online=pres&&pres.ts&&(now-pres.ts)<180000;
+            rows.push({username:(ud&&ud.displayName)||fu,usernameKey:fu,games:glist.length,online:online});
+        }
+        _renderAmigosList(rows);
+    }catch(e){
+        el.innerHTML='<div style="padding:2rem;text-align:center;color:var(--red);font-size:0.82rem">Error: '+escHtml((e&&e.message)||String(e))+'</div>';
+    }
+}
+function _renderAmigosList(rows){
+    var el=document.getElementById('amigosContent');if(!el)return;
+    var h='<div style="padding:0 1rem 0.5rem"><div style="display:flex;gap:6px"><input type="text" id="addFriendInput" placeholder="Nombre de usuario..." style="flex:1;padding:0.5rem 0.8rem;border-radius:9px;border:1px solid var(--glass-border);background:var(--bg-surface);color:var(--text);font-size:0.8rem;font-family:inherit" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addFriend()}"><button onclick="addFriend()" style="padding:0.5rem 1rem;background:var(--accent);color:#000;border:none;border-radius:9px;font-size:0.8rem;font-weight:700;font-family:inherit;cursor:pointer">Agregar</button></div></div>';
+    h+='<div style="padding:0 1rem">';
+    if(!rows.length){
+        h+='<div style="padding:1.5rem 0;text-align:center;color:var(--text3);font-size:0.82rem">Todavía no agregaste amigos. Buscá por su nombre de usuario.</div>';
+    }else{
+        rows.sort(function(a,b){return(b.online-a.online)||a.username.localeCompare(b.username);});
+        for(var i=0;i<rows.length;i++){var u=rows[i];
+            h+='<div style="display:flex;align-items:center;gap:8px;padding:0.6rem 0;border-bottom:1px solid var(--border)">';
+            h+='<div onclick="viewFriendProfile(\''+escHtml(u.usernameKey).replace(/'/g,"\\'")+'\')" style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;cursor:pointer">';
+            h+='<div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-weight:800;color:#000;flex-shrink:0">'+escHtml(u.username.charAt(0).toUpperCase())+'</div>';
+            h+='<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:5px"><div style="width:7px;height:7px;border-radius:50%;background:'+(u.online?'var(--green)':'var(--text3)')+'"></div><span style="font-size:0.85rem;font-weight:600">'+escHtml(u.username)+'</span></div><div style="font-size:0.68rem;color:var(--text3)">'+u.games+' juegos</div></div>';
+            h+='</div>';
+            h+='<button onclick="removeFriend(\''+escHtml(u.usernameKey).replace(/'/g,"\\'")+'\')" style="background:none;border:none;color:var(--text3);font-size:0.7rem;cursor:pointer;font-family:inherit;flex-shrink:0">Quitar</button>';
+            h+='</div>';
+        }
+    }
+    h+='</div>';
+    el.innerHTML=h;
+}
+async function addFriend(){
+    var inp=document.getElementById('addFriendInput');if(!inp)return;
+    var uname=inp.value.trim().toLowerCase();
+    if(!uname)return;
+    if(uname===_currentUser.username){showToast('No podés agregarte a vos mismo','error');return;}
+    var idx=await _dbGet('_users_index');
+    if(!idx||!idx.users||!idx.users[uname]){showToast('No existe ningún usuario con ese nombre','error');return;}
+    var friends=await _dbGet('friends_'+_currentUser.username)||[];
+    if(friends.indexOf(uname)>=0){showToast('Ya es tu amigo','info');inp.value='';return;}
+    friends.push(uname);
+    await _dbSet('friends_'+_currentUser.username,friends,true);
+    showToast('Agregado como amigo','success');
+    inp.value='';
+    renderAmigos();
+}
+async function removeFriend(uname){
+    if(!confirm('¿Quitar a '+uname+' de tus amigos?'))return;
+    var friends=await _dbGet('friends_'+_currentUser.username)||[];
+    friends=friends.filter(function(f){return f!==uname;});
+    await _dbSet('friends_'+_currentUser.username,friends,true);
+    renderAmigos();
+}
+async function viewFriendProfile(uname){
+    document.getElementById('adminStatsModal').classList.add('open');
+    var body=document.getElementById('adminStatsBody');
+    body.innerHTML='<div style="padding:2rem;text-align:center;color:var(--text3);font-size:0.85rem"><div class="spinner" style="width:22px;height:22px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 0.6rem"></div>Cargando perfil...</div>';
+    try{
+        var lib=await _dbGet('lib_'+uname);
+        var glist=Array.isArray(lib)?lib:[];
+        var prof=await _dbGet('profile_'+uname);
+        var consoles=(prof&&Array.isArray(prof.consoles))?prof.consoles:[];
+        var STATUS_COLORS={'Jugando':'#60a5fa','Quiero':'#facc15','Terminado':'#34d399','Abandonado':'#f87171','Archivado':'#9ca3af'};
+        var groups={};
+        var order=['Jugando','Quiero','Terminado','Abandonado','Archivado'];
+        glist.forEach(function(g){var st=g.status||'Sin estado';if(!groups[st])groups[st]=[];groups[st].push(g);});
+        var keys=Object.keys(groups).sort(function(a,b){var ia=order.indexOf(a),ib=order.indexOf(b);if(ia===-1)ia=99;if(ib===-1)ib=99;return ia-ib;});
+        var h='<div style="display:flex;align-items:center;gap:8px;margin-bottom:1rem"><button onclick="closeModal(\'adminStatsModal\')" style="background:none;border:none;color:var(--accent);font-size:0.85rem;font-weight:600;cursor:pointer;font-family:inherit;padding:0">← Cerrar</button></div>';
+        h+='<div style="font-size:1.05rem;font-weight:800;margin-bottom:2px">'+escHtml(uname)+'</div>';
+        h+='<div style="font-size:0.75rem;color:var(--text3);margin-bottom:0.5rem">'+glist.length+' juegos en total</div>';
+        h+='<div style="font-size:0.68rem;color:var(--text2);background:var(--bg-surface);border-radius:8px;padding:0.5rem 0.7rem;margin-bottom:0.6rem">🎮 Consolas: '+(consoles.length?escHtml(consoles.join(', ')):'<span style="color:var(--text3)">Ninguna seleccionada</span>')+'</div>';
+        if(!glist.length){h+='<div style="padding:1.5rem;text-align:center;color:var(--text3);font-size:0.82rem">Este usuario no tiene juegos todavía.</div>';}
+        for(var ki=0;ki<keys.length;ki++){
+            var st=keys[ki];var list=groups[st];
+            var stColor=STATUS_COLORS[st]||'var(--text3)';
+            h+='<div style="display:flex;align-items:center;gap:6px;margin:0.9rem 0 0.5rem"><div style="width:8px;height:8px;border-radius:50%;background:'+stColor+'"></div><div style="font-size:0.72rem;font-weight:700;color:'+stColor+';text-transform:uppercase;letter-spacing:0.05em">'+escHtml(st)+' · '+list.length+'</div></div>';
+            for(var li=0;li<list.length;li++){var g=list[li];
+                var cov=g.coverUrl?'<img src="'+escHtml(g.coverUrl)+'" loading="lazy" referrerpolicy="no-referrer" style="width:32px;height:43px;object-fit:cover;border-radius:5px;flex-shrink:0;background:var(--bg-surface)">':'<div style="width:32px;height:43px;border-radius:5px;background:var(--bg-surface);flex-shrink:0"></div>';
+                h+='<div style="display:flex;align-items:center;gap:8px;padding:0.3rem 0;border-bottom:1px solid var(--border)">'+cov+'<div style="flex:1;min-width:0"><div style="font-size:0.8rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(g.name||'')+'</div><div style="font-size:0.66rem;color:var(--text3)">'+escHtml(g.platform||'')+(g.releaseYear?' · '+g.releaseYear:'')+'</div></div></div>';
+            }
+        }
+        body.innerHTML=h;
+    }catch(e){
+        body.innerHTML='<div style="padding:2rem;text-align:center;color:var(--red);font-size:0.82rem">Error: '+escHtml((e&&e.message)||String(e))+'</div>';
+    }
+}
 
 function renderCuentaTab(){
     var el=document.getElementById('cuentaContent');if(!el)return;
@@ -4181,7 +4287,7 @@ function openSheet(id){
     h+='<div id="sheetRawgInfo"></div>';
 
     h+='<div class="sheet-actions"><button class="sheet-action sheet-action-edit" onclick="openEditFromSheet(\''+g.id+'\')">Editar</button>';
-    if(_isAdmin())h+='<button class="sheet-action sheet-action-delete" onclick="closeSheet();openDeleteModal(\''+g.id+'\')">Eliminar</button>';
+    h+='<button class="sheet-action sheet-action-delete" onclick="closeSheet();openDeleteModal(\''+g.id+'\')">Eliminar</button>';
     h+='</div>';
     h+='</div>';
 
@@ -4864,21 +4970,51 @@ async function loadTrendingRawg(containerId){
     if(_trendingCache){_renderTrendingSection(el,_trendingCache);return;}
     el.innerHTML='<div class="search-hint" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:1rem 0"><div class="spinner" style="width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite"></div> Cargando populares...</div>';
     var results=[];
-    var key=gk('rawg');
     try{
-        if(key){
-            var today=new Date();var from=new Date();from.setDate(from.getDate()-45);
-            var fmt=function(d){return d.toISOString().slice(0,10);};
-            var url=RAWG_PROXY_BASE+'/games?key='+encodeURIComponent(key)+'&dates='+fmt(from)+','+fmt(today)+'&ordering=-added&page_size=10';
-            var r=await fetch(url);
-            if(r.ok){var data=await r.json();results=(data.results||[]).map(_rawgToCard);}
-        }
-    }catch(e){}
+        results=await _fetchIgdbPopularNow(10);
+    }catch(e0){}
+    if(!results.length){
+        var key=gk('rawg');
+        try{
+            if(key){
+                var today=new Date();var from=new Date();from.setDate(from.getDate()-45);
+                var fmt=function(d){return d.toISOString().slice(0,10);};
+                var url=RAWG_PROXY_BASE+'/games?key='+encodeURIComponent(key)+'&dates='+fmt(from)+','+fmt(today)+'&ordering=-added&page_size=10';
+                var r=await fetch(url);
+                if(r.ok){var data=await r.json();results=(data.results||[]).map(_rawgToCard);}
+            }
+        }catch(e){}
+    }
     if(!results.length){
         try{var fb=await _igdbFallback('igdb_catalog',{limit:'10',sort:'rating'});if(fb&&fb.results)results=fb.results;}catch(e2){}
     }
     _trendingCache=results;
     _renderTrendingSection(el,results);
+}
+async function _fetchIgdbPopularNow(limit){
+    var idKey=gk('igdb_id'),secKey=gk('igdb_secret');
+    if(!idKey||!secKey)return[];
+    var auth=await getIGDBToken();
+    if(!auth)return[];
+    try{
+        var popBody='fields game_id,value; where popularity_type = (2,3); sort value desc; limit '+(limit*2)+';';
+        var popR=await fetch(PROXY_ORIGIN+'/igdb/popularity_primitives',{method:'POST',headers:{'Client-ID':auth.cid,'Authorization':'Bearer '+auth.token},body:popBody});
+        if(!popR.ok)return[];
+        var popData=await popR.json();
+        if(!popData||!popData.length)return[];
+        var seenIds=[];var ids=[];
+        for(var i=0;i<popData.length&&ids.length<limit;i++){
+            if(ids.indexOf(popData[i].game_id)===-1){ids.push(popData[i].game_id);}
+        }
+        if(!ids.length)return[];
+        var gamesBody='fields name,cover.image_id,first_release_date,platforms.name,rating,aggregated_rating; where id = ('+ids.join(',')+') & cover != null;';
+        var gamesR=await fetch(PROXY_ORIGIN+'/igdb/games',{method:'POST',headers:{'Client-ID':auth.cid,'Authorization':'Bearer '+auth.token},body:gamesBody});
+        if(!gamesR.ok)return[];
+        var gamesData=await gamesR.json();
+        var order={};for(var oi=0;oi<ids.length;oi++)order[ids[oi]]=oi;
+        gamesData.sort(function(a,b){return(order[a.id]||999)-(order[b.id]||999);});
+        return gamesData.map(_igdbToCard);
+    }catch(e){return[];}
 }
 function _renderTrendingSection(el,results){
     if(!results||!results.length){el.innerHTML='';return;}
@@ -5244,8 +5380,8 @@ function saveGame(e){
         }).catch(function(){});
     }
 }
-function openDeleteModal(id){if(!_isAdmin()){showToast('Solo el administrador puede eliminar juegos','error');return;}const g=games.find(x=>x.id===id);if(!g)return;deletingId=id;document.getElementById('delName').textContent=g.name;openModal('deleteModal');}
-function confirmDelete(){if(!_isAdmin())return;if(!deletingId)return;games=games.filter(g=>g.id!==deletingId);save();closeModal('deleteModal');deletingId=null;showToast('Juego eliminado','info');refreshViews();}
+function openDeleteModal(id){const g=games.find(x=>x.id===id);if(!g)return;deletingId=id;document.getElementById('delName').textContent=g.name;openModal('deleteModal');}
+function confirmDelete(){if(!deletingId)return;games=games.filter(g=>g.id!==deletingId);save();closeModal('deleteModal');deletingId=null;showToast('Juego eliminado','info');refreshViews();}
 
 function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open')}
