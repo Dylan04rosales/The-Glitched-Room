@@ -1705,7 +1705,7 @@ function _igdbTimestampToYear(ts){return ts?new Date(ts*1000).getFullYear():0;}
 function _igdbToCard(g){
     var cover=g.cover&&g.cover.image_id?('https://images.igdb.com/igdb/image/upload/t_1080p/'+g.cover.image_id+'.jpg'):'';
     var platList=(g.platforms||[]).map(function(p){return p.name;});
-    return{id:'igdb_'+(g.id||g.name),name:g.name,cover:cover,metacritic:0,year:_igdbTimestampToYear(g.first_release_date),platforms:platList.join(', '),platList:platList,userRating:g.rating?Math.round(g.rating):0,rawgId:0};
+    return{id:'igdb_'+(g.id||g.name),name:g.name,cover:cover,metacritic:g.aggregated_rating?Math.round(g.aggregated_rating):0,year:_igdbTimestampToYear(g.first_release_date),platforms:platList.join(', '),platList:platList,userRating:g.rating?Math.round(g.rating):0,rawgId:0};
 }
 async function _igdbFallback(action,params){
     var auth=await getIGDBToken();
@@ -1713,17 +1713,17 @@ async function _igdbFallback(action,params){
     var body=null,seedName=null;
     try{
         if(action==='igdb_search'){
-            body='search "'+((params.query||'').replace(/"/g,''))+'"; fields name,cover.image_id,first_release_date,platforms.name,rating; limit '+(params.limit||16)+';';
+            body='search "'+((params.query||'').replace(/"/g,''))+'"; fields name,cover.image_id,first_release_date,platforms.name,rating,aggregated_rating; limit '+(params.limit||16)+';';
         }else if(action==='igdb_catalog'){
             var pid=IGDB_PLAT_MAP[params.platform];
             var lim=parseInt(params.limit||'20',10);
             var off=params.offset?parseInt(params.offset,10):0;
             var sort=params.sort==='rating'?'rating desc':(params.sort==='name'?'name asc':'first_release_date desc');
-            body='fields name,cover.image_id,first_release_date,platforms.name,rating;'+(pid?' where platforms = ('+pid+') & cover != null;':' where cover != null;')+' sort '+sort+'; limit '+lim+'; offset '+off+';';
+            body='fields name,cover.image_id,first_release_date,platforms.name,rating,aggregated_rating;'+(pid?' where platforms = ('+pid+') & cover != null;':' where cover != null;')+' sort '+sort+'; limit '+lim+'; offset '+off+';';
         }else if(action==='igdb_browse'){
             var mid=IGDB_MODE_MAP[params.mode];
             if(!mid)return null;
-            body='fields name,cover.image_id,first_release_date,platforms.name,rating; where game_modes = ('+mid+') & cover != null; sort rating desc; limit '+(params.limit||20)+';';
+            body='fields name,cover.image_id,first_release_date,platforms.name,rating,aggregated_rating; where game_modes = ('+mid+') & cover != null; sort aggregated_rating desc; limit '+(params.limit||20)+';';
         }else if(action==='igdb_recommend'){
             seedName=params.gameName||'';
             var sBody='search "'+seedName.replace(/"/g,'')+'"; fields genres; limit 1;';
@@ -1733,7 +1733,7 @@ async function _igdbFallback(action,params){
             var seed=sd&&sd[0];
             if(!seed||!seed.genres||!seed.genres.length)return{results:[]};
             var igdbPlatIds=(params.platforms||'').split(',').filter(Boolean).map(function(lbl){return IGDB_PLAT_MAP[lbl];}).filter(Boolean);
-            body='fields name,cover.image_id,first_release_date,platforms.name,rating; where genres = ('+seed.genres.slice(0,2).join(',')+')'+(igdbPlatIds.length?' & platforms = ('+igdbPlatIds.join(',')+')':'')+' & cover != null; sort rating desc; limit '+(params.limit||12)+';';
+            body='fields name,cover.image_id,first_release_date,platforms.name,rating,aggregated_rating; where genres = ('+seed.genres.slice(0,2).join(',')+')'+(igdbPlatIds.length?' & platforms = ('+igdbPlatIds.join(',')+')':'')+' & cover != null; sort aggregated_rating desc; limit '+(params.limit||12)+';';
         }else if(action==='igdb_genre'){
             var searchName=params.label||params.slug;
             var epField=params.param==='tags'?'themes':'genres';
@@ -1744,10 +1744,10 @@ async function _igdbFallback(action,params){
             var match=lookupData&&lookupData[0];
             if(!match)return{results:[]};
             var igdbPlatIds2=(params.platforms||'').split(',').filter(Boolean).map(function(lbl){return IGDB_PLAT_MAP[lbl];}).filter(Boolean);
-            body='fields name,cover.image_id,first_release_date,platforms.name,rating; where '+epField+' = ('+match.id+')'+(igdbPlatIds2.length?' & platforms = ('+igdbPlatIds2.join(',')+')':'')+' & cover != null; sort rating desc; limit '+(params.limit||20)+';';
+            body='fields name,cover.image_id,first_release_date,platforms.name,rating,aggregated_rating; where '+epField+' = ('+match.id+')'+(igdbPlatIds2.length?' & platforms = ('+igdbPlatIds2.join(',')+')':'')+' & cover != null; sort aggregated_rating desc; limit '+(params.limit||20)+';';
         }else if(action==='igdb_toprated'){
             var tpPlatIds2=(params.platforms||'').split(',').filter(Boolean).map(function(lbl){return IGDB_PLAT_MAP[lbl];}).filter(Boolean);
-            body='fields name,cover.image_id,first_release_date,platforms.name,rating; where rating >= 70'+(tpPlatIds2.length?' & platforms = ('+tpPlatIds2.join(',')+')':'')+' & cover != null; sort rating desc; limit '+(params.limit||16)+';';
+            body='fields name,cover.image_id,first_release_date,platforms.name,rating,aggregated_rating; where aggregated_rating >= 70'+(tpPlatIds2.length?' & platforms = ('+tpPlatIds2.join(',')+')':'')+' & cover != null; sort aggregated_rating desc; limit '+(params.limit||16)+';';
         }else return null;
         var r=await fetch(PROXY_ORIGIN+'/igdb/games',{method:'POST',headers:{'Client-ID':auth.cid,'Authorization':'Bearer '+auth.token},body:body});
         if(!r.ok)return null;
