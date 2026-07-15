@@ -2807,7 +2807,7 @@ function renderPerfil(){
     h+='<button class="profile-tab'+(profileTab==='stats'?' active':'')+'" onclick="setProfileTab(\'stats\')">Estadisticas</button>';
     if(_isAdmin())h+='<button class="profile-tab'+(profileTab==='gestion'?' active':'')+'" onclick="setProfileTab(\'gestion\')">Gestion</button>';
     h+='<button class="profile-tab'+(profileTab==='ratings'?' active':'')+'" onclick="setProfileTab(\'ratings\')">★ Calificaciones</button>';
-    h+='<button class="profile-tab'+(profileTab==='amigos'?' active':'')+'" onclick="setProfileTab(\'amigos\')">👥 Amigos</button>';
+    h+='<button class="profile-tab'+(profileTab==='amigos'?' active':'')+'" data-amigos-tab onclick="setProfileTab(\'amigos\')">👥 Amigos</button>';
     h+='<button class="profile-tab'+(profileTab==='cuenta'?' active':'')+'" onclick="setProfileTab(\'cuenta\')">Cuenta</button></div>';
     if(profileTab==='juegos'){
         const tabs=['all',...STATUSES];
@@ -2874,6 +2874,9 @@ function renderPerfil(){
     if(profileTab==='ratings')renderRatingsTab();
     if(profileTab==='amigos')renderAmigos();
     if(profileTab==='cuenta')renderCuentaTab();
+    if(profileTab!=='amigos'&&_currentUser){
+        _dbGet('friend_requests_'+_currentUser.username).then(function(r){_updateFriendReqBadge((r||[]).length);}).catch(function(){});
+    }
 }
 
 function _checkLocalCover(gameId){
@@ -3115,7 +3118,9 @@ async function renderAmigos(){
     var el=document.getElementById('amigosContent');if(!el||!_currentUser)return;
     el.innerHTML='<div style="padding:2rem;text-align:center;color:var(--text3);font-size:0.85rem"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 0.5rem"></div>Cargando amigos...</div>';
     try{
+        await _checkFriendNotifications();
         var friends=await _dbGet('friends_'+_currentUser.username)||[];
+        var incoming=await _dbGet('friend_requests_'+_currentUser.username)||[];
         var idx=await _dbGet('_users_index');
         var now=Date.now();
         var rows=[];
@@ -3128,17 +3133,40 @@ async function renderAmigos(){
             var online=pres&&pres.ts&&(now-pres.ts)<180000;
             rows.push({username:(ud&&ud.displayName)||fu,usernameKey:fu,games:glist.length,online:online});
         }
-        _renderAmigosList(rows);
+        _renderAmigosList(rows,incoming.length);
+        _updateFriendReqBadge(incoming.length);
     }catch(e){
         el.innerHTML='<div style="padding:2rem;text-align:center;color:var(--red);font-size:0.82rem">Error: '+escHtml((e&&e.message)||String(e))+'</div>';
     }
 }
-function _renderAmigosList(rows){
+function _updateFriendReqBadge(n){
+    var tab=document.querySelector('.profile-tab[data-amigos-tab]');
+    if(!tab)return;
+    var badge=tab.querySelector('.friend-req-badge');
+    if(n>0){
+        if(!badge){badge=document.createElement('span');badge.className='friend-req-badge';badge.style.cssText='display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 3px;border-radius:8px;background:var(--red);color:#fff;font-size:0.6rem;font-weight:800;margin-left:4px';tab.appendChild(badge);}
+        badge.textContent=n>9?'9+':n;
+    }else if(badge){badge.remove();}
+}
+async function _checkFriendNotifications(){
+    var notifs=await _dbGet('friend_notifs_'+_currentUser.username)||[];
+    if(!notifs.length)return;
+    for(var i=0;i<notifs.length;i++){
+        var n=notifs[i];
+        if(n.type==='accepted')showToast(n.from+' aceptó tu solicitud de amistad','success');
+        else if(n.type==='rejected')showToast(n.from+' rechazó tu solicitud de amistad','info');
+        else if(n.type==='removed')showToast(n.from+' te eliminó de sus amigos','info');
+    }
+    await _dbSet('friend_notifs_'+_currentUser.username,[],true);
+}
+function _renderAmigosList(rows,reqCount){
     var el=document.getElementById('amigosContent');if(!el)return;
-    var h='<div style="padding:0 1rem 0.5rem"><div style="display:flex;gap:6px"><input type="text" id="addFriendInput" placeholder="Nombre de usuario..." style="flex:1;padding:0.5rem 0.8rem;border-radius:9px;border:1px solid var(--glass-border);background:var(--bg-surface);color:var(--text);font-size:0.8rem;font-family:inherit" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addFriend()}"><button onclick="addFriend()" style="padding:0.5rem 1rem;background:var(--accent);color:#000;border:none;border-radius:9px;font-size:0.8rem;font-weight:700;font-family:inherit;cursor:pointer">Agregar</button></div></div>';
+    var h='<div style="padding:0 1rem 0.5rem"><div style="display:flex;gap:6px"><input type="text" id="addFriendInput" placeholder="Nombre de usuario..." style="flex:1;padding:0.5rem 0.8rem;border-radius:9px;border:1px solid var(--glass-border);background:var(--bg-surface);color:var(--text);font-size:0.8rem;font-family:inherit" onkeydown="if(event.key===\'Enter\'){event.preventDefault();sendFriendRequest()}"><button onclick="sendFriendRequest()" style="padding:0.5rem 1rem;background:var(--accent);color:#000;border:none;border-radius:9px;font-size:0.8rem;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap">Agregar</button>';
+    h+='<button onclick="openFriendRequests()" style="padding:0.5rem 0.9rem;background:var(--bg-surface);color:var(--text2);border:1px solid var(--glass-border);border-radius:9px;font-size:0.8rem;font-weight:700;font-family:inherit;cursor:pointer;position:relative;white-space:nowrap">Solicitudes'+(reqCount>0?' <span style="display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 3px;border-radius:8px;background:var(--red);color:#fff;font-size:0.65rem;font-weight:800;margin-left:3px">'+reqCount+'</span>':'')+'</button>';
+    h+='</div><button onclick="shareProfile()" style="margin-top:0.5rem;width:100%;padding:0.45rem;background:none;border:1px dashed var(--glass-border);border-radius:9px;color:var(--text3);font-size:0.75rem;font-weight:600;font-family:inherit;cursor:pointer">🔗 Compartir mi perfil</button></div>';
     h+='<div style="padding:0 1rem">';
     if(!rows.length){
-        h+='<div style="padding:1.5rem 0;text-align:center;color:var(--text3);font-size:0.82rem">Todavía no agregaste amigos. Buscá por su nombre de usuario.</div>';
+        h+='<div style="padding:1.5rem 0;text-align:center;color:var(--text3);font-size:0.82rem">Todavía no tenés amigos. Buscá por su nombre de usuario para mandarle una solicitud.</div>';
     }else{
         rows.sort(function(a,b){return(b.online-a.online)||a.username.localeCompare(b.username);});
         for(var i=0;i<rows.length;i++){var u=rows[i];
@@ -3154,19 +3182,69 @@ function _renderAmigosList(rows){
     h+='</div>';
     el.innerHTML=h;
 }
-async function addFriend(){
-    var inp=document.getElementById('addFriendInput');if(!inp)return;
-    var uname=inp.value.trim().toLowerCase();
+async function sendFriendRequest(uname){
+    var fromInput=false;
+    if(!uname){var inp=document.getElementById('addFriendInput');if(!inp)return;uname=inp.value.trim().toLowerCase();fromInput=true;}
     if(!uname)return;
     if(uname===_currentUser.username){showToast('No podés agregarte a vos mismo','error');return;}
     var idx=await _dbGet('_users_index');
     if(!idx||!idx.users||!idx.users[uname]){showToast('No existe ningún usuario con ese nombre','error');return;}
     var friends=await _dbGet('friends_'+_currentUser.username)||[];
-    if(friends.indexOf(uname)>=0){showToast('Ya es tu amigo','info');inp.value='';return;}
-    friends.push(uname);
-    await _dbSet('friends_'+_currentUser.username,friends,true);
-    showToast('Agregado como amigo','success');
-    inp.value='';
+    if(friends.indexOf(uname)>=0){showToast('Ya es tu amigo','info');if(fromInput)document.getElementById('addFriendInput').value='';return;}
+    var sentReqs=await _dbGet('friend_requests_sent_'+_currentUser.username)||[];
+    if(sentReqs.indexOf(uname)>=0){showToast('Ya le mandaste una solicitud','info');if(fromInput)document.getElementById('addFriendInput').value='';return;}
+    var theirIncoming=await _dbGet('friend_requests_'+uname)||[];
+    if(theirIncoming.indexOf(_currentUser.username)<0){theirIncoming.push(_currentUser.username);await _dbSet('friend_requests_'+uname,theirIncoming,true);}
+    sentReqs.push(uname);
+    await _dbSet('friend_requests_sent_'+_currentUser.username,sentReqs,true);
+    showToast('Solicitud enviada a '+uname,'success');
+    if(fromInput)document.getElementById('addFriendInput').value='';
+    renderAmigos();
+}
+async function openFriendRequests(){
+    document.getElementById('adminStatsModal').classList.add('open');
+    var body=document.getElementById('adminStatsBody');
+    body.innerHTML='<div style="padding:2rem;text-align:center;color:var(--text3);font-size:0.85rem"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 0.5rem"></div>Cargando solicitudes...</div>';
+    try{
+        var incoming=await _dbGet('friend_requests_'+_currentUser.username)||[];
+        var h='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem"><div style="font-size:1.05rem;font-weight:800">Solicitudes de amistad</div><button onclick="closeModal(\'adminStatsModal\')" style="background:none;border:none;color:var(--text3);font-size:1.2rem;cursor:pointer;line-height:1">×</button></div>';
+        if(!incoming.length){
+            h+='<div style="padding:1.5rem;text-align:center;color:var(--text3);font-size:0.82rem">No tenés solicitudes pendientes.</div>';
+        }else{
+            for(var i=0;i<incoming.length;i++){var u=incoming[i];
+                h+='<div style="display:flex;align-items:center;gap:8px;padding:0.6rem 0;border-bottom:1px solid var(--border)">';
+                h+='<div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-weight:800;color:#000;flex-shrink:0">'+escHtml(u.charAt(0).toUpperCase())+'</div>';
+                h+='<div style="flex:1;min-width:0;font-size:0.85rem;font-weight:600">'+escHtml(u)+'</div>';
+                h+='<button onclick="respondFriendRequest(\''+escHtml(u).replace(/'/g,"\\'")+'\',true)" style="padding:0.35rem 0.8rem;background:var(--accent);color:#000;border:none;border-radius:8px;font-size:0.74rem;font-weight:700;font-family:inherit;cursor:pointer">Aceptar</button>';
+                h+='<button onclick="respondFriendRequest(\''+escHtml(u).replace(/'/g,"\\'")+'\',false)" style="padding:0.35rem 0.8rem;background:var(--bg-elevated);color:var(--text2);border:none;border-radius:8px;font-size:0.74rem;font-weight:700;font-family:inherit;cursor:pointer">Rechazar</button>';
+                h+='</div>';
+            }
+        }
+        body.innerHTML=h;
+    }catch(e){
+        body.innerHTML='<div style="padding:2rem;text-align:center;color:var(--red);font-size:0.82rem">Error: '+escHtml((e&&e.message)||String(e))+'</div>';
+    }
+}
+async function respondFriendRequest(fromUser,accept){
+    var incoming=await _dbGet('friend_requests_'+_currentUser.username)||[];
+    incoming=incoming.filter(function(u){return u!==fromUser;});
+    await _dbSet('friend_requests_'+_currentUser.username,incoming,true);
+    var theirSent=await _dbGet('friend_requests_sent_'+fromUser)||[];
+    theirSent=theirSent.filter(function(u){return u!==_currentUser.username;});
+    await _dbSet('friend_requests_sent_'+fromUser,theirSent,true);
+    if(accept){
+        var myFriends=await _dbGet('friends_'+_currentUser.username)||[];
+        if(myFriends.indexOf(fromUser)<0)myFriends.push(fromUser);
+        await _dbSet('friends_'+_currentUser.username,myFriends,true);
+        var theirFriends=await _dbGet('friends_'+fromUser)||[];
+        if(theirFriends.indexOf(_currentUser.username)<0)theirFriends.push(_currentUser.username);
+        await _dbSet('friends_'+fromUser,theirFriends,true);
+    }
+    var theirNotifs=await _dbGet('friend_notifs_'+fromUser)||[];
+    theirNotifs.push({type:accept?'accepted':'rejected',from:_currentUser.username,ts:Date.now()});
+    await _dbSet('friend_notifs_'+fromUser,theirNotifs,true);
+    showToast(accept?'Ahora son amigos':'Solicitud rechazada','success');
+    openFriendRequests();
     renderAmigos();
 }
 async function removeFriend(uname){
@@ -3174,7 +3252,52 @@ async function removeFriend(uname){
     var friends=await _dbGet('friends_'+_currentUser.username)||[];
     friends=friends.filter(function(f){return f!==uname;});
     await _dbSet('friends_'+_currentUser.username,friends,true);
+    var theirFriends=await _dbGet('friends_'+uname)||[];
+    theirFriends=theirFriends.filter(function(f){return f!==_currentUser.username;});
+    await _dbSet('friends_'+uname,theirFriends,true);
+    var theirNotifs=await _dbGet('friend_notifs_'+uname)||[];
+    theirNotifs.push({type:'removed',from:_currentUser.username,ts:Date.now()});
+    await _dbSet('friend_notifs_'+uname,theirNotifs,true);
     renderAmigos();
+}
+function shareProfile(){
+    var link=location.origin+location.pathname+'?perfil='+encodeURIComponent(_currentUser.username);
+    if(navigator.share){navigator.share({title:'Mi perfil de The Glitched Room',url:link}).catch(function(){});}
+    else{
+        navigator.clipboard.writeText(link).then(function(){showToast('Link copiado al portapapeles','success');}).catch(function(){prompt('Copiá este link:',link);});
+    }
+}
+async function viewSharedProfile(uname){
+    var idx=await _dbGet('_users_index');
+    if(!idx||!idx.users||!idx.users[uname]){showToast('Ese perfil no existe','error');return;}
+    document.getElementById('adminStatsModal').classList.add('open');
+    var body=document.getElementById('adminStatsBody');
+    body.innerHTML='<div style="padding:2rem;text-align:center;color:var(--text3);font-size:0.85rem"><div class="spinner" style="width:22px;height:22px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 0.6rem"></div>Cargando perfil compartido...</div>';
+    try{
+        var lib=await _dbGet('lib_'+uname);
+        var glist=Array.isArray(lib)?lib:[];
+        var prof=await _dbGet('profile_'+uname);
+        var consoles=(prof&&Array.isArray(prof.consoles))?prof.consoles:[];
+        var h='<div style="font-size:1.05rem;font-weight:800;margin-bottom:2px">'+escHtml(uname)+'</div>';
+        h+='<div style="font-size:0.75rem;color:var(--text3);margin-bottom:0.5rem">'+glist.length+' juegos en su biblioteca</div>';
+        h+='<div style="font-size:0.68rem;color:var(--text2);background:var(--bg-surface);border-radius:8px;padding:0.5rem 0.7rem;margin-bottom:0.9rem">🎮 Consolas: '+(consoles.length?escHtml(consoles.join(', ')):'<span style="color:var(--text3)">Ninguna seleccionada</span>')+'</div>';
+        if(!_currentUser){
+            h+='<div style="padding:0.75rem;background:rgba(250,204,21,0.08);border:1px solid rgba(250,204,21,0.25);border-radius:10px;font-size:0.78rem;color:var(--text2);margin-bottom:0.5rem">Iniciá sesión para poder mandarle una solicitud de amistad a este usuario.</div>';
+        }else if(_currentUser.username===uname){
+            h+='<div style="padding:0.75rem;background:var(--bg-surface);border-radius:10px;font-size:0.78rem;color:var(--text3)">Este es tu propio perfil.</div>';
+        }else{
+            h+='<button onclick="sendFriendRequest(\''+escHtml(uname).replace(/'/g,"\\'")+'\')" style="width:100%;padding:0.6rem;background:var(--accent);color:#000;border:none;border-radius:10px;font-size:0.82rem;font-weight:700;font-family:inherit;cursor:pointer;margin-bottom:0.75rem">➕ Enviar solicitud de amistad</button>';
+        }
+        h+='<div style="font-size:0.7rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin:0.5rem 0 0.4rem">Biblioteca</div>';
+        var sorted=[...glist].sort(function(a,b){return(a.name||'').localeCompare(b.name||'');});
+        for(var i=0;i<Math.min(sorted.length,50);i++){var g=sorted[i];
+            var cov=g.coverUrl?'<img src="'+escHtml(g.coverUrl)+'" loading="lazy" referrerpolicy="no-referrer" style="width:32px;height:43px;object-fit:cover;border-radius:5px;flex-shrink:0;background:var(--bg-surface)">':'<div style="width:32px;height:43px;border-radius:5px;background:var(--bg-surface);flex-shrink:0"></div>';
+            h+='<div style="display:flex;align-items:center;gap:8px;padding:0.3rem 0;border-bottom:1px solid var(--border)">'+cov+'<div style="flex:1;min-width:0"><div style="font-size:0.8rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(g.name||'')+'</div><div style="font-size:0.66rem;color:var(--text3)">'+escHtml(g.status||'')+' · '+escHtml(g.platform||'')+'</div></div></div>';
+        }
+        body.innerHTML=h;
+    }catch(e){
+        body.innerHTML='<div style="padding:2rem;text-align:center;color:var(--red);font-size:0.82rem">Error: '+escHtml((e&&e.message)||String(e))+'</div>';
+    }
 }
 async function viewFriendProfile(uname){
     document.getElementById('adminStatsModal').classList.add('open');
@@ -3832,12 +3955,34 @@ function renderGestion(){
     h+='<button class="filter-tab'+(gestionFilter==='portadas'?' active':'')+'" onclick="gestionFilter=\'portadas\';renderGestion()">Portadas</button>';
     h+='<button class="filter-tab'+(gestionFilter==='sinportada'?' active':'')+'" onclick="gestionFilter=\'sinportada\';renderGestion()">Sin portada</button>';
     h+='<button class="filter-tab'+(gestionFilter==='revisar'?' active':'')+'" onclick="gestionFilter=\'revisar\';renderGestion()">Revisar</button>';
+    h+='<button class="filter-tab'+(gestionFilter==='historial'?' active':'')+'" onclick="gestionFilter=\'historial\';renderGestion()">📜 Historial</button>';
     h+='</div>';
     if(gestionFilter==='duplicados'){h+=renderGestionDuplicados();}
     else if(gestionFilter==='portadas'){h+=renderGestionPortadas();}
     else if(gestionFilter==='revisar'){h+=renderGestionRevisar();}
+    else if(gestionFilter==='historial'){h+=renderGestionHistorial();}
     else{h+=renderGestionSinPortada();}
     el.innerHTML=h;
+}
+var VERSION_HISTORY=[
+    {v:'1.0',d:'Migración inicial',items:['Migración completa desde Vento a hosting independiente (GitHub Pages)','Reemplazo del backend privado de Vento por almacenamiento local y luego Cloudflare Workers','Login/registro con contraseñas encriptadas, con respaldo para navegadores sin soporte de encriptación']},
+    {v:'1.1',d:'Búsqueda y catálogo',items:['Integración real con RAWG e IGDB a través de un proxy propio (Cloudflare Worker) para evitar bloqueos de CORS','Arreglo de "Buscar", "Explorar" (plataformas, géneros, modos) y recomendaciones, que no traían resultados','Sección "Populares ahora" basada en tendencias/popularidad real','Buscador unificado: biblioteca propia y catálogo externo en un solo lugar']},
+    {v:'1.2',d:'Cuentas compartidas',items:['Cuentas, bibliotecas y perfiles pasaron a guardarse en una base de datos compartida (Cloudflare KV), accesible para todos los usuarios reales de la web','Sistema de presencia (usuarios "online")','Panel de administrador con estadísticas: usuarios registrados, online, biblioteca de cada uno agrupada por estado y consola, buscador de usuarios']},
+    {v:'1.3',d:'Notas y crítica',items:['Autocompletar notas de Metacritic, User Score y OpenCritic','Corrección del sistema de recomendaciones para priorizar la nota de la crítica por sobre la de usuarios','Portadas: búsqueda real en TheGamesDB y SteamGridDB']},
+    {v:'1.4',d:'PSN y social',items:['Sincronización real con la API de PlayStation Network (trofeos, juegos, progreso)','Sistema de Amigos con solicitudes: enviar, aceptar, rechazar, eliminar (con aviso a ambas partes)','Compartir perfil por link, con opción de mandar solicitud de amistad desde ahí']},
+    {v:'1.5',d:'Correcciones y pulido',items:['Arreglo de falsos positivos en "En biblioteca" (confundía secuelas con nombres parecidos)','Corrección de permisos: cualquier usuario puede borrar sus propios juegos, y acceder a Sagas/PSN/Estadísticas/Calificaciones (antes limitado a admin)','Optimización visual para pantallas de escritorio','Este historial de versiones']}
+];
+function renderGestionHistorial(){
+    var h='<div style="padding:0 0.75rem 1rem">';
+    for(var i=VERSION_HISTORY.length-1;i>=0;i--){var ver=VERSION_HISTORY[i];
+        h+='<div style="margin-bottom:1rem;padding-bottom:1rem;'+(i>0?'border-bottom:1px solid var(--border)':'')+'">';
+        h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:0.5rem"><span style="background:var(--accent);color:#000;font-size:0.7rem;font-weight:800;padding:2px 8px;border-radius:6px">v'+ver.v+'</span><span style="font-size:0.85rem;font-weight:700">'+escHtml(ver.d)+'</span></div>';
+        h+='<ul style="margin:0;padding-left:1.1rem;display:flex;flex-direction:column;gap:4px">';
+        for(var j=0;j<ver.items.length;j++){h+='<li style="font-size:0.76rem;color:var(--text2);line-height:1.4">'+escHtml(ver.items[j])+'</li>';}
+        h+='</ul></div>';
+    }
+    h+='</div>';
+    return h;
 }
 function renderGestionDuplicados(){
     var nameMap={};
@@ -5675,6 +5820,8 @@ else{_lastCloudHash=_hashGames();}
 document.addEventListener('visibilitychange',function(){if(!document.hidden)_cloudPoll();});
 window.addEventListener('focus',function(){_cloudPoll();});
 setInterval(function(){if(!document.hidden)_cloudPoll();},60000);
+var _sharedProfile=new URLSearchParams(location.search).get('perfil');
+if(_sharedProfile)setTimeout(function(){viewSharedProfile(_sharedProfile.toLowerCase())},400);
 })()
 </script>
 </body>
