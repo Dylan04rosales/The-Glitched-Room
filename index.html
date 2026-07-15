@@ -4793,16 +4793,14 @@ function openDatosSheet(id){
     h+='<div class="datos-option" onclick="editDatos(\'formato\')">'+iFormat+'<span class="datos-option-label">Formato</span><span class="datos-option-value">'+(g.formato||'Sin definir')+'</span>'+chevron+'</div>';
     var _rStars=(g.rating||0)?'★'.repeat(g.rating)+'☆'.repeat(5-g.rating):'Sin rating';
     h+='<div class="datos-option" onclick="editDatos(\'rating\')">'+ico('<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>')+'<span class="datos-option-label">Rating personal</span><span class="datos-option-value" style="color:var(--accent)">'+_rStars+'</span>'+chevron+'</div>';
-    if(_admin){
-    h+='<div class="datos-option" onclick="editDatos(\'dates\')">'+iDate+'<span class="datos-option-label">Fechas</span><span class="datos-option-value">'+(g.startDate||g.finishDate?'Configurado':'')+'</span>'+chevron+'</div>';
+    if(_admin)h+='<div class="datos-option" onclick="editDatos(\'dates\')">'+iDate+'<span class="datos-option-label">Fechas</span><span class="datos-option-value">'+(g.startDate||g.finishDate?'Configurado':'')+'</span>'+chevron+'</div>';
     h+='<div class="datos-option" onclick="editDatos(\'timesCompleted\')">'+iTimes+'<span class="datos-option-label">Veces completado</span><span class="datos-option-value">'+(g.timesCompleted||'')+'</span>'+chevron+'</div>';
     h+='<div class="datos-option" onclick="editDatos(\'playTime\')">'+iTime+'<span class="datos-option-label">Tiempo de juego</span><span class="datos-option-value">'+(g.playTime?g.playTime+'h':'')+'</span>'+chevron+'</div>';
     h+='<div class="datos-option" onclick="editDatos(\'progress\')">'+iProg+'<span class="datos-option-label">Progreso</span><span class="datos-option-value">'+g.completion+'%</span>'+chevron+'</div>';
     h+='<div class="datos-option" onclick="togglePlatinum()" style="cursor:pointer">'+ico('<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>')+'<span class="datos-option-label">Platinado</span><span class="datos-option-value" style="color:'+(g.platinum?'#e5e4e2':'var(--text3)')+'">'+(g.platinum?'🏆 Si':'No')+'</span></div>';
-    h+='<div class="datos-option" onclick="editDatos(\'notes\')">'+iNotes+'<span class="datos-option-label">Notas privadas</span><span class="datos-option-value">'+(g.notes?'Editado':'')+'</span>'+chevron+'</div>';
-    h+='<div class="datos-option" onclick="editDatos(\'image\')">'+iImg+'<span class="datos-option-label">Imagen</span><span class="datos-option-value">'+((g.coverUrl||_localCoverCache[g.id]===true)?'Configurado':'')+'</span>'+chevron+'</div>';
-    h+='<div class="datos-option" onclick="editDatos(\'link\')">'+iLink+'<span class="datos-option-label">Enlace</span><span class="datos-option-value">'+(g.customLink?'Configurado':'')+'</span>'+chevron+'</div>';
-    }
+    if(_admin)h+='<div class="datos-option" onclick="editDatos(\'notes\')">'+iNotes+'<span class="datos-option-label">Notas privadas</span><span class="datos-option-value">'+(g.notes?'Editado':'')+'</span>'+chevron+'</div>';
+    if(_admin)h+='<div class="datos-option" onclick="editDatos(\'image\')">'+iImg+'<span class="datos-option-label">Imagen</span><span class="datos-option-value">'+((g.coverUrl||_localCoverCache[g.id]===true)?'Configurado':'')+'</span>'+chevron+'</div>';
+    if(_admin)h+='<div class="datos-option" onclick="editDatos(\'link\')">'+iLink+'<span class="datos-option-label">Enlace</span><span class="datos-option-value">'+(g.customLink?'Configurado':'')+'</span>'+chevron+'</div>';
 
     document.getElementById('datosSheet').innerHTML=h;
     document.getElementById('datosBackdrop').classList.add('open');
@@ -4811,6 +4809,7 @@ function openDatosSheet(id){
 function closeDatosSheet(){document.getElementById('datosBackdrop').classList.remove('open');document.getElementById('datosSheet').classList.remove('open');datosGameId=null;}
 
 function editDatos(field){
+    if(['dates','notes','image','link'].indexOf(field)>=0&&!_isAdmin()){showToast('Solo el administrador puede editar esto','error');return;}
     const g=games.find(x=>x.id===datosGameId);if(!g)return;
     const sheet=document.getElementById('datosSheet');
     var backAction=_fromGestion?'closeDatosSheet();_fromGestion=false;':'openDatosSheet(\''+g.id+'\')';
@@ -5824,6 +5823,20 @@ window.addEventListener('focus',function(){_cloudPoll();});
 setInterval(function(){if(!document.hidden)_cloudPoll();},60000);
 var _sharedProfile=new URLSearchParams(location.search).get('perfil');
 if(_sharedProfile)setTimeout(function(){viewSharedProfile(_sharedProfile.toLowerCase())},400);
+history.replaceState({view:'inicio'},'',location.href);
+history.pushState({view:currentView||'inicio'},'',location.href);
+window.addEventListener('popstate',function(e){
+    var openOverlay=document.querySelector('.modal-overlay.open, .sheet.open, .gd-sheet.open');
+    if(openOverlay){
+        openOverlay.classList.remove('open');
+        history.pushState({view:currentView||'inicio'},'',location.href);
+        return;
+    }
+    if(currentView!=='inicio'){
+        showView('inicio');
+        history.pushState({view:'inicio'},'',location.href);
+    }
+});
 })()
 </script>
 </body>
