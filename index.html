@@ -4790,7 +4790,7 @@ function openDatosSheet(id){
 
     var _admin=_isAdmin();
     let h='<div class="sheet-handle"></div><div class="datos-title">Añadir datos</div>';
-    h+='<div class="datos-option" onclick="editDatos(\'platform\')">'+iPlat+'<span class="datos-option-label">Plataformas</span><span class="datos-option-value">'+escHtml(g.platform)+'</span>'+chevron+'</div>';
+    if(_admin)h+='<div class="datos-option" onclick="editDatos(\'platform\')">'+iPlat+'<span class="datos-option-label">Plataformas</span><span class="datos-option-value">'+escHtml(g.platform)+'</span>'+chevron+'</div>';
     h+='<div class="datos-option" onclick="editDatos(\'formato\')">'+iFormat+'<span class="datos-option-label">Formato</span><span class="datos-option-value">'+(g.formato||'Sin definir')+'</span>'+chevron+'</div>';
     var _rStars=(g.rating||0)?'★'.repeat(g.rating)+'☆'.repeat(5-g.rating):'Sin rating';
     h+='<div class="datos-option" onclick="editDatos(\'rating\')">'+ico('<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>')+'<span class="datos-option-label">Rating personal</span><span class="datos-option-value" style="color:var(--accent)">'+_rStars+'</span>'+chevron+'</div>';
