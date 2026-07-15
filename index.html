@@ -1383,6 +1383,17 @@ function filterAdminStats(q){
     if(q)rows=rows.filter(function(u){return u.username.toLowerCase().indexOf(q)>=0;});
     _renderAdminStats(_adminRowsCache.total,_adminRowsCache.online,rows,q);
 }
+var STATUS_COLORS_MAP={'Jugando':'#60a5fa','Quiero':'#facc15','Terminado':'#34d399','Abandonado':'#f87171','Archivado':'#9ca3af'};
+function _sharedGameRow(g,showStatus){
+    var cov=g.coverUrl?'<img src="'+escHtml(g.coverUrl)+'" loading="lazy" referrerpolicy="no-referrer" style="width:32px;height:43px;object-fit:cover;border-radius:5px;flex-shrink:0;background:var(--bg-surface)">':'<div style="width:32px;height:43px;border-radius:5px;background:var(--bg-surface);flex-shrink:0"></div>';
+    var plat=g.platform||'';
+    var platColor=plat?(PLAT_COLORS[plat]||getBrandColor(plat)):null;
+    var platBadge=plat?'<span style="color:'+(platColor||'var(--text3)')+';font-weight:700">'+escHtml(plat)+'</span>':'';
+    var stColor=STATUS_COLORS_MAP[g.status]||'var(--text3)';
+    var stBadge=showStatus&&g.status?'<span style="color:'+stColor+';font-weight:700">'+escHtml(g.status)+'</span> · ':'';
+    var plat88=g.platinum?' <span style="color:#e5e4e2">🏆</span>':'';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:0.3rem 0;border-bottom:1px solid var(--border)">'+cov+'<div style="flex:1;min-width:0"><div style="font-size:0.8rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(g.name||'')+plat88+'</div><div style="font-size:0.66rem">'+stBadge+platBadge+(g.releaseYear?' <span style="color:var(--text3)">· '+g.releaseYear+'</span>':'')+(g.formato?' <span style="color:var(--text3)">· '+escHtml(g.formato)+'</span>':'')+'</div></div></div>';
+}
 async function openAdminUserDetail(uname){
     if(!_isAdmin())return;
     var body=document.getElementById('adminStatsBody');
@@ -1438,11 +1449,7 @@ async function openAdminUserDetail(uname){
             h+='<div style="display:flex;align-items:center;gap:6px;margin:0.9rem 0 0.5rem"><div style="width:8px;height:8px;border-radius:50%;background:'+stColor+'"></div><div style="font-size:0.72rem;font-weight:700;color:'+stColor+';text-transform:uppercase;letter-spacing:0.05em">'+escHtml(st)+' · '+list.length+'</div></div>';
             h+='<div style="display:flex;flex-direction:column;gap:2px">';
             for(var li=0;li<list.length;li++){var g=list[li];
-                var cov=g.coverUrl?'<img src="'+escHtml(g.coverUrl)+'" loading="lazy" referrerpolicy="no-referrer" style="width:32px;height:43px;object-fit:cover;border-radius:5px;flex-shrink:0;background:var(--bg-surface)">':'<div style="width:32px;height:43px;border-radius:5px;background:var(--bg-surface);flex-shrink:0"></div>';
-                h+='<div style="display:flex;align-items:center;gap:8px;padding:0.3rem 0;border-bottom:1px solid var(--border)">';
-                h+=cov;
-                h+='<div style="flex:1;min-width:0"><div style="font-size:0.8rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(g.name||'')+'</div><div style="font-size:0.66rem;color:var(--text3)">'+escHtml(g.platform||'')+(g.releaseYear?' · '+g.releaseYear:'')+(g.formato?' · '+escHtml(g.formato):'')+'</div></div>';
-                h+='</div>';
+                h+=_sharedGameRow(g,false);
             }
             h+='</div>';
         }
@@ -2803,7 +2810,7 @@ function renderPerfil(){
     }
     h+='<div class="profile-tabs"><button class="profile-tab'+(profileTab==='juegos'?' active':'')+'" onclick="setProfileTab(\'juegos\')">Juegos</button>';
     h+='<button class="profile-tab'+(profileTab==='sagas'?' active':'')+'" onclick="setProfileTab(\'sagas\')">Sagas</button>';
-    if(psn)h+='<button class="profile-tab'+(profileTab==='psn'?' active':'')+'" onclick="setProfileTab(\'psn\')">PSN</button>';
+    
     h+='<button class="profile-tab'+(profileTab==='stats'?' active':'')+'" onclick="setProfileTab(\'stats\')">Estadisticas</button>';
     if(_isAdmin())h+='<button class="profile-tab'+(profileTab==='gestion'?' active':'')+'" onclick="setProfileTab(\'gestion\')">Gestion</button>';
     h+='<button class="profile-tab'+(profileTab==='ratings'?' active':'')+'" onclick="setProfileTab(\'ratings\')">★ Calificaciones</button>';
@@ -2852,8 +2859,6 @@ function renderPerfil(){
         if(!games.length)h='<div class="empty-state" style="min-height:30vh"><p>Todavia no agregaste juegos</p><button class="empty-btn" onclick="openAddModal()">Agregar juego</button></div>';
     } else if(profileTab==='sagas'){
         h+='<div id="sagasContent"></div>';
-    } else if(profileTab==='psn'){
-        h+='<div id="psnContent"><div class="psn-loading">Cargando datos de PSN Profiles...</div></div>';
     } else if(profileTab==='gestion'){
         h+='<div id="gestionContent"></div>';
     } else if(profileTab==='ratings'){
@@ -2868,7 +2873,6 @@ function renderPerfil(){
     el.innerHTML=h;
     if(profileTab==='juegos'&&games.length)renderPerfilGrid();
     if(profileTab==='sagas')renderSagas();
-    if(profileTab==='psn')loadPSNProfile();
     if(profileTab==='stats')renderStats();
     if(profileTab==='gestion')renderGestion();
     if(profileTab==='ratings')renderRatingsTab();
@@ -3291,8 +3295,7 @@ async function viewSharedProfile(uname){
         h+='<div style="font-size:0.7rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin:0.5rem 0 0.4rem">Biblioteca</div>';
         var sorted=[...glist].sort(function(a,b){return(a.name||'').localeCompare(b.name||'');});
         for(var i=0;i<Math.min(sorted.length,50);i++){var g=sorted[i];
-            var cov=g.coverUrl?'<img src="'+escHtml(g.coverUrl)+'" loading="lazy" referrerpolicy="no-referrer" style="width:32px;height:43px;object-fit:cover;border-radius:5px;flex-shrink:0;background:var(--bg-surface)">':'<div style="width:32px;height:43px;border-radius:5px;background:var(--bg-surface);flex-shrink:0"></div>';
-            h+='<div style="display:flex;align-items:center;gap:8px;padding:0.3rem 0;border-bottom:1px solid var(--border)">'+cov+'<div style="flex:1;min-width:0"><div style="font-size:0.8rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(g.name||'')+'</div><div style="font-size:0.66rem;color:var(--text3)">'+escHtml(g.status||'')+' · '+escHtml(g.platform||'')+'</div></div></div>';
+            h+=_sharedGameRow(g,true);
         }
         body.innerHTML=h;
     }catch(e){
@@ -3323,8 +3326,7 @@ async function viewFriendProfile(uname){
             var stColor=STATUS_COLORS[st]||'var(--text3)';
             h+='<div style="display:flex;align-items:center;gap:6px;margin:0.9rem 0 0.5rem"><div style="width:8px;height:8px;border-radius:50%;background:'+stColor+'"></div><div style="font-size:0.72rem;font-weight:700;color:'+stColor+';text-transform:uppercase;letter-spacing:0.05em">'+escHtml(st)+' · '+list.length+'</div></div>';
             for(var li=0;li<list.length;li++){var g=list[li];
-                var cov=g.coverUrl?'<img src="'+escHtml(g.coverUrl)+'" loading="lazy" referrerpolicy="no-referrer" style="width:32px;height:43px;object-fit:cover;border-radius:5px;flex-shrink:0;background:var(--bg-surface)">':'<div style="width:32px;height:43px;border-radius:5px;background:var(--bg-surface);flex-shrink:0"></div>';
-                h+='<div style="display:flex;align-items:center;gap:8px;padding:0.3rem 0;border-bottom:1px solid var(--border)">'+cov+'<div style="flex:1;min-width:0"><div style="font-size:0.8rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(g.name||'')+'</div><div style="font-size:0.66rem;color:var(--text3)">'+escHtml(g.platform||'')+(g.releaseYear?' · '+g.releaseYear:'')+'</div></div></div>';
+                h+=_sharedGameRow(g,false);
             }
         }
         body.innerHTML=h;
