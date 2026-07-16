@@ -5364,7 +5364,58 @@ function previewGame(el){
     h+='<button onclick="document.getElementById(\'gamePreviewOverlay\').remove();selectRAWG(_previewEl)" style="flex:1;padding:0.75rem;background:var(--accent);color:#000;border:none;border-radius:12px;font-size:0.95rem;font-weight:700;font-family:inherit;cursor:pointer">Agregar</button>';
     h+='<button onclick="document.getElementById(\'gamePreviewOverlay\').remove()" style="flex:1;padding:0.75rem;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;color:var(--text3);font-size:0.95rem;font-weight:600;font-family:inherit;cursor:pointer">Cancelar</button>';
     h+='</div>';
+    h+='<button onclick="viewGameSaga(\''+escHtml(name).replace(/'/g,"\\'")+'\')" style="margin-top:8px;width:100%;max-width:320px;padding:0.6rem;background:none;border:1px dashed rgba(255,255,255,0.15);border-radius:10px;color:var(--text2);font-size:0.8rem;font-weight:600;font-family:inherit;cursor:pointer">🎮 Ver juegos de la saga</button>';
     ov.innerHTML=h;document.body.appendChild(ov);
+}
+async function viewGameSaga(name){
+    var old=document.getElementById('sagaViewOverlay');if(old)old.remove();
+    var ov=document.createElement('div');ov.id='sagaViewOverlay';
+    ov.style.cssText='position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,0.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;padding:1.5rem;animation:fadeIn 0.2s ease';
+    ov.onclick=function(e){if(e.target===ov)ov.remove();};
+    ov.innerHTML='<div style="background:var(--bg-card);border-radius:16px;padding:1.25rem;max-width:400px;width:100%;max-height:80vh;overflow-y:auto"><div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">Buscando la saga de '+escHtml(name)+'...</div></div>';
+    document.body.appendChild(ov);
+    var box=ov.firstElementChild;
+    try{
+        var sr=await fetch(PROXY_ORIGIN+'/rawg/games?search='+encodeURIComponent(name)+'&page_size=1').then(function(r){return r.json();});
+        var best=sr.results&&sr.results[0];
+        if(!best){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">No se encontró el juego</div>';return;}
+        var gs=await fetch(PROXY_ORIGIN+'/rawg/games/'+best.id+'/game-series?page_size=20').then(function(r){return r.json();});
+        var list=gs.results||[];
+        if(!list.length){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">'+escHtml(name)+' no pertenece a ninguna saga detectada</div>';return;}
+        var h='<div style="font-size:0.95rem;font-weight:800;margin-bottom:0.8rem;text-align:center">Saga de '+escHtml(name)+'</div>';
+        h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">';
+        for(var i=0;i<list.length;i++){
+            var g=list[i];
+            var yr=(g.released||'').split('-')[0]||'';
+            h+='<div onclick="addSagaGame('+i+')" data-saga-idx="'+i+'" style="cursor:pointer;text-align:center">'+
+               '<div style="width:100%;aspect-ratio:3/4;border-radius:8px;overflow:hidden;background:var(--bg-elevated)">'+
+               (g.background_image?'<img src="'+escHtml(g.background_image)+'" style="width:100%;height:100%;object-fit:cover" referrerpolicy="no-referrer" alt="">':'')+
+               '</div><div style="font-size:0.65rem;margin-top:4px;color:var(--text2)">'+escHtml(g.name)+'</div>'+
+               (yr?'<div style="font-size:0.6rem;color:var(--text3)">'+yr+'</div>':'')+
+               '</div>';
+        }
+        h+='</div>';
+        h+='<button onclick="document.getElementById(\'sagaViewOverlay\').remove()" style="margin-top:1rem;width:100%;padding:0.6rem;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:var(--text3);font-size:0.8rem;font-weight:600;font-family:inherit;cursor:pointer">Cerrar</button>';
+        box.innerHTML=h;
+        window._sagaResults=list;
+    }catch(e){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">Error al buscar la saga</div>';}
+}
+function addSagaGame(idx){
+    var g=window._sagaResults&&window._sagaResults[idx];if(!g)return;
+    var ov=document.getElementById('sagaViewOverlay');if(ov)ov.remove();
+    var plats=(g.platforms||[]).map(function(p){return p.platform&&p.platform.name;}).filter(Boolean).join(', ');
+    filterPlatforms(plats);
+    document.getElementById('fName').value=g.name;
+    document.getElementById('fCover').value=g.background_image||'';
+    document.getElementById('fMC').value=g.metacritic||'';
+    document.getElementById('fSaga').value='';
+    proxySteamCover(g.name).then(function(sc){if(sc){document.getElementById('fCover').value=sc;lastRawgCover=sc;}});
+    var ryEl=document.getElementById('fReleaseYear');if(ryEl)ryEl.value=g.released?new Date(g.released).getFullYear():0;
+    document.getElementById('fPlatform').value='';
+    lastRawgId=g.id;lastRawgCover=g.background_image||null;
+    if(!document.getElementById('addModal').classList.contains('open'))openAddModalPrefilled();
+    document.getElementById('fPlatformPicker').scrollIntoView({behavior:'smooth',block:'center'});
+    if(g.id)trySagaDetect(g.id,g.name);
 }
 function selectRAWG(el){
     var name=el.dataset.name,cover=el.dataset.cover,mc=el.dataset.mc,plats=el.dataset.platforms;
