@@ -5695,10 +5695,25 @@ function saveGame(e){
     if(editingId){const i=games.findIndex(g=>g.id===editingId);if(i>=0)games[i]={...games[i],...data};showToast('Juego actualizado','success');}
     else{data.id=genId();data.addedDate=new Date().toISOString();games.push(data);showToast('Juego agregado','success');}
     save();closeModal('addModal');refreshViews();
-    if(data.coverUrl&&data.coverUrl.indexOf(COVERS_URL)!==0){
-        var _gid=editingId||data.id;
-        uploadCoverToServer(data.coverUrl,_gid).then(function(local){
-            if(local){var _g=games.find(function(x){return x.id===_gid});if(_g){_g.coverUrl=local;_g.coverCustom=true;save();refreshViews();}}
+    if(!editingId){
+        var _gid=data.id,_plat=data.platform,_name=data.name,_existingCover=data.coverUrl;
+        fetchPlatformCover(lastRawgId,_plat,_name).then(function(bestCover){
+            var finalCover=bestCover||_existingCover;
+            if(!finalCover)return;
+            var _g=games.find(function(x){return x.id===_gid;});
+            if(!_g)return;
+            _g.coverUrl=finalCover;
+            if(finalCover.indexOf(COVERS_URL)!==0&&COVERS_URL){
+                uploadCoverToServer(finalCover,_gid).then(function(local){
+                    var _g2=games.find(function(x){return x.id===_gid;});
+                    if(_g2){_g2.coverUrl=local||finalCover;if(local)_g2.coverCustom=true;save();refreshViews();}
+                }).catch(function(){save();refreshViews();});
+            }else{save();refreshViews();}
+        }).catch(function(){});
+    }else if(data.coverUrl&&data.coverUrl.indexOf(COVERS_URL)!==0){
+        var _gidE=editingId;
+        uploadCoverToServer(data.coverUrl,_gidE).then(function(local){
+            if(local){var _g=games.find(function(x){return x.id===_gidE});if(_g){_g.coverUrl=local;_g.coverCustom=true;save();refreshViews();}}
         }).catch(function(){});
     }
 }
