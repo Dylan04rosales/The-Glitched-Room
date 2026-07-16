@@ -4034,13 +4034,31 @@ function renderGestion(){
     h+='<button class="filter-tab'+(gestionFilter==='sinportada'?' active':'')+'" onclick="gestionFilter=\'sinportada\';renderGestion()">Sin portada</button>';
     h+='<button class="filter-tab'+(gestionFilter==='revisar'?' active':'')+'" onclick="gestionFilter=\'revisar\';renderGestion()">Revisar</button>';
     h+='<button class="filter-tab'+(gestionFilter==='historial'?' active':'')+'" onclick="gestionFilter=\'historial\';renderGestion()">📜 Historial</button>';
+    h+='<button class="filter-tab'+(gestionFilter==='sagas'?' active':'')+'" onclick="gestionFilter=\'sagas\';renderGestion()">🎮 Sagas buscadas</button>';
     h+='</div>';
     if(gestionFilter==='duplicados'){h+=renderGestionDuplicados();}
     else if(gestionFilter==='portadas'){h+=renderGestionPortadas();}
     else if(gestionFilter==='revisar'){h+=renderGestionRevisar();}
     else if(gestionFilter==='historial'){h+=renderGestionHistorial();}
+    else if(gestionFilter==='sagas'){h+='<div id="gestionSagasBox" style="padding:0 0.75rem 1rem">Cargando...</div>';el.innerHTML=h;renderGestionSagas();return;}
     else{h+=renderGestionSinPortada();}
     el.innerHTML=h;
+}
+async function renderGestionSagas(){
+    var box=document.getElementById('gestionSagasBox');if(!box)return;
+    var log=await _dbGet('saga_search_log')||[];
+    if(!log.length){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.82rem;padding:1.5rem 0">Todavía no se buscó ninguna saga</div>';return;}
+    var h='';
+    for(var i=log.length-1;i>=0;i--){
+        var e=log[i];
+        var d=new Date(e.ts);
+        var fecha=d.toLocaleDateString()+' '+d.toLocaleTimeString().slice(0,5);
+        h+='<div style="padding:0.6rem 0;border-bottom:1px solid var(--border)">';
+        h+='<div style="display:flex;justify-content:space-between;gap:8px"><span style="font-size:0.85rem;font-weight:700">'+escHtml(e.query)+'</span><span style="font-size:0.65rem;color:var(--text3);white-space:nowrap">'+fecha+'</span></div>';
+        h+='<div style="font-size:0.7rem;color:var(--text3);margin-top:2px">'+escHtml(e.user||'anon')+' · '+(e.found?e.found+' juego'+(e.found!==1?'s':'')+' encontrado'+(e.found!==1?'s':''):'sin saga detectada')+'</div>';
+        h+='</div>';
+    }
+    box.innerHTML=h;
 }
 var VERSION_HISTORY=[
     {v:'1.0',d:'Migración inicial',items:['Migración completa desde Vento a hosting independiente (GitHub Pages)','Reemplazo del backend privado de Vento por almacenamiento local y luego Cloudflare Workers','Login/registro con contraseñas encriptadas, con respaldo para navegadores sin soporte de encriptación']},
@@ -4049,7 +4067,8 @@ var VERSION_HISTORY=[
     {v:'1.3',d:'Notas y crítica',items:['Autocompletar notas de Metacritic, User Score y OpenCritic','Corrección del sistema de recomendaciones para priorizar la nota de la crítica por sobre la de usuarios','Portadas: búsqueda real en TheGamesDB y SteamGridDB']},
     {v:'1.4',d:'PSN y social',items:['Sincronización real con la API de PlayStation Network (trofeos, juegos, progreso)','Sistema de Amigos con solicitudes: enviar, aceptar, rechazar, eliminar (con aviso a ambas partes)','Compartir perfil por link, con opción de mandar solicitud de amistad desde ahí']},
     {v:'1.5',d:'Correcciones y pulido',items:['Arreglo de falsos positivos en "En biblioteca" (confundía secuelas con nombres parecidos)','Corrección de permisos: cualquier usuario puede borrar sus propios juegos, y acceder a Sagas/PSN/Estadísticas/Calificaciones (antes limitado a admin)','Optimización visual para pantallas de escritorio','Este historial de versiones']},
-    {v:'1.6',d:'Ajustes de permisos y navegación',items:['Se quitó la sincronización con PSN (no funcionaba de forma confiable)','Platinado, veces completado, tiempo de juego y progreso: editable por cualquier usuario','Fechas, notas privadas, imagen y enlace: vuelven a ser exclusivos del admin','Perfiles compartidos, de amigos y de admin: estados y consolas en colores, e indicador 🏆 de platinado','El gesto/botón de atrás ahora navega dentro de la app (cierra modales, vuelve a Inicio) en vez de salir de la web']}
+    {v:'1.6',d:'Ajustes de permisos y navegación',items:['Se quitó la sincronización con PSN (no funcionaba de forma confiable)','Platinado, veces completado, tiempo de juego y progreso: editable por cualquier usuario','Fechas, notas privadas, imagen y enlace: vuelven a ser exclusivos del admin','Perfiles compartidos, de amigos y de admin: estados y consolas en colores, e indicador 🏆 de platinado','El gesto/botón de atrás ahora navega dentro de la app (cierra modales, vuelve a Inicio) en vez de salir de la web']},
+    {v:'1.7',d:'Seguridad, Steam, PWA y saga',items:['Se sacaron del código todas las API keys y datos personales que estaban hardcodeados; ahora las gestiona el Worker de forma privada','Importar biblioteca desde Steam (con horas jugadas reales)','Wrapped anual: resumen del año con juegos agregados, terminados, horas jugadas y plataforma top','Instalable como app (PWA) desde el navegador','Biblioteca en común con amigos','Selector aleatorio de backlog ("¿Qué juego?"), filtrado por tus consolas','Rate limit de login movido al servidor (antes era fácil de esquivar limpiando el navegador)','Botón "Ver saga" en la previsualización de búsqueda, usando IGDB (evita depender de la cuota de RAWG)','Historial de búsquedas de saga guardado en el servidor']}
 ];
 function renderGestionHistorial(){
     var h='<div style="padding:0 0.75rem 1rem">';
@@ -5367,6 +5386,14 @@ function previewGame(el){
     h+='<button onclick="viewGameSaga(\''+escHtml(name).replace(/'/g,"\\'")+'\')" style="margin-top:8px;width:100%;max-width:320px;padding:0.6rem;background:none;border:1px dashed rgba(255,255,255,0.15);border-radius:10px;color:var(--text2);font-size:0.8rem;font-weight:600;font-family:inherit;cursor:pointer">🎮 Ver juegos de la saga</button>';
     ov.innerHTML=h;document.body.appendChild(ov);
 }
+async function _logSagaSearch(query,resultNames){
+    try{
+        var log=await _dbGet('saga_search_log')||[];
+        log.push({query:query,results:resultNames,found:resultNames.length,user:(_currentUser&&_currentUser.username)||'anon',ts:Date.now()});
+        if(log.length>200)log=log.slice(log.length-200);
+        await _dbSet('saga_search_log',log,true);
+    }catch(e){}
+}
 async function viewGameSaga(name){
     var old=document.getElementById('sagaViewOverlay');if(old)old.remove();
     var ov=document.createElement('div');ov.id='sagaViewOverlay';
@@ -5393,13 +5420,13 @@ async function viewGameSaga(name){
         var whereClauses=[];
         if(collId)whereClauses.push('collection = '+collId);
         if(franchiseIds.length)whereClauses.push('franchises = ('+franchiseIds.join(',')+')');
-        if(!whereClauses.length){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">'+escHtml(name)+' no pertenece a ninguna saga detectada</div>';return;}
+        if(!whereClauses.length){_logSagaSearch(name,[]);box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">'+escHtml(name)+' no pertenece a ninguna saga detectada</div>';return;}
         var listBody='fields name,cover.image_id,first_release_date,platforms.name; where ('+whereClauses.join(' | ')+'); limit 24;';
         var r2=await fetch(PROXY_ORIGIN+'/igdb/games',{method:'POST',headers:{'Client-ID':auth.cid,'Authorization':'Bearer '+auth.token},body:listBody});
         if(!r2.ok){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">Error al buscar los juegos de la saga</div>';return;}
         var list=(await r2.json())||[];
         list.sort(function(a,b){return(a.first_release_date||0)-(b.first_release_date||0);});
-        if(!list.length){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">'+escHtml(name)+' no pertenece a ninguna saga detectada</div>';return;}
+        if(!list.length){_logSagaSearch(name,[]);box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">'+escHtml(name)+' no pertenece a ninguna saga detectada</div>';return;}
         var h='<div style="font-size:0.95rem;font-weight:800;margin-bottom:0.8rem;text-align:center">Saga de '+escHtml(name)+'</div>';
         h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">';
         for(var i=0;i<list.length;i++){
@@ -5417,6 +5444,7 @@ async function viewGameSaga(name){
         h+='<button onclick="document.getElementById(\'sagaViewOverlay\').remove()" style="margin-top:1rem;width:100%;padding:0.6rem;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:var(--text3);font-size:0.8rem;font-weight:600;font-family:inherit;cursor:pointer">Cerrar</button>';
         box.innerHTML=h;
         window._sagaResults=list;
+        _logSagaSearch(name,list.map(function(g){return g.name;}));
     }catch(e){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">Error al buscar la saga</div>';}
 }
 function addSagaGame(idx){
