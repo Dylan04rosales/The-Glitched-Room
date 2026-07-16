@@ -5376,9 +5376,17 @@ async function viewGameSaga(name){
     document.body.appendChild(ov);
     var box=ov.firstElementChild;
     try{
-        var sr=await fetch(PROXY_ORIGIN+'/rawg/games?search='+encodeURIComponent(name)+'&page_size=1').then(function(r){return r.json();});
+        var q=cleanSearchName(name);
+        var sr=await fetch(PROXY_ORIGIN+'/rawg/games?search='+encodeURIComponent(q)+'&page_size=1').then(function(r){return r.json();});
         var best=sr.results&&sr.results[0];
-        if(!best){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">No se encontró el juego</div>';return;}
+        if(!best){
+            var shortName=extractSagaFromName(name)||name.split(/[:\-–]/)[0].trim();
+            if(shortName&&shortName.toLowerCase()!==q.toLowerCase()){
+                var sr2=await fetch(PROXY_ORIGIN+'/rawg/games?search='+encodeURIComponent(shortName)+'&page_size=1').then(function(r){return r.json();});
+                best=sr2.results&&sr2.results[0];
+            }
+        }
+        if(!best){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">No se encontró el juego en RAWG</div>';return;}
         var gs=await fetch(PROXY_ORIGIN+'/rawg/games/'+best.id+'/game-series?page_size=20').then(function(r){return r.json();});
         var list=gs.results||[];
         if(!list.length){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">'+escHtml(name)+' no pertenece a ninguna saga detectada</div>';return;}
