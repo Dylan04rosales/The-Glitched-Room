@@ -5379,11 +5379,15 @@ async function viewGameSaga(name){
         var auth=await getIGDBToken();
         if(!auth){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">IGDB no está disponible ahora mismo</div>';return;}
         var q=cleanSearchName(name).replace(/"/g,'');
-        var searchBody='search "'+q+'"; fields name,collection.name,collection.id,franchises.id,franchises.name; limit 1;';
+        var searchBody='search "'+q+'"; fields name,collection.name,collection.id,franchises.id,franchises.name; limit 8;';
         var r1=await fetch(PROXY_ORIGIN+'/igdb/games',{method:'POST',headers:{'Client-ID':auth.cid,'Authorization':'Bearer '+auth.token},body:searchBody});
         if(!r1.ok){var et=await r1.text().catch(function(){return'';});box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">No se encontró el juego en IGDB<br><span style="color:var(--red);font-size:0.7rem">Debug: IGDB HTTP '+r1.status+' '+escHtml(et.slice(0,150))+'</span></div>';return;}
-        var found=(await r1.json())[0];
-        if(!found){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">No se encontró el juego en IGDB</div>';return;}
+        var candidates=await r1.json();
+        if(!candidates.length){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">No se encontró el juego en IGDB</div>';return;}
+        var qLower=q.toLowerCase();
+        var withSaga=candidates.filter(function(c){return c.collection||(c.franchises&&c.franchises.length);});
+        var exact=withSaga.filter(function(c){return c.name.toLowerCase()===qLower;});
+        var found=exact[0]||withSaga[0]||candidates.find(function(c){return c.name.toLowerCase()===qLower;})||candidates[0];
         var collId=found.collection&&found.collection.id;
         var franchiseIds=(found.franchises||[]).map(function(f){return f.id;});
         var whereClauses=[];
