@@ -582,7 +582,6 @@
             <div class="fg"><label>API Key de RAWG</label><input type="text" id="sRawg" placeholder="API key gratis de rawg.io" oninput="saveKey('rawg',this.value)" onpaste="setTimeout(()=>saveKey('rawg',this.value),50)"><div style="margin-top:0.3rem;font-size:0.68rem;color:var(--text3)">Buscar juegos e info. Gratis en <a href="https://rawg.io/apidocs" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">rawg.io/apidocs</a></div></div>
             <div class="fg"><label>API Key de SteamGridDB</label><input type="text" id="sSgdb" placeholder="API key gratis de steamgriddb.com" oninput="saveKey('sgdb',this.value)" onpaste="setTimeout(()=>saveKey('sgdb',this.value),50)"><div style="margin-top:0.3rem;font-size:0.68rem;color:var(--text3)">Caratulas por plataforma. Gratis en <a href="https://www.steamgriddb.com/profile/preferences/api" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">steamgriddb.com/profile/preferences/api</a></div></div> <div class="fg"><label>API Key de TheGamesDB</label><input type="text" id="sTgdb" placeholder="API key gratis de thegamesdb.net" oninput="saveKey('tgdb',this.value)" onpaste="setTimeout(()=>saveKey('tgdb',this.value),50)"><div style="margin-top:0.3rem;font-size:0.68rem;color:var(--text3)">Box art oficial. Gratis en <a href="https://thegamesdb.net/register.php" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">thegamesdb.net/register</a></div></div> <div class="fg"><label>IGDB Client ID (Twitch)</label><input type="text" id="sIgdbId" placeholder="Client ID de dev.twitch.tv" oninput="saveKey('igdb_id',this.value)" onpaste="setTimeout(()=>saveKey('igdb_id',this.value),50)"></div> <div class="fg"><label>IGDB Client Secret (Twitch)</label><input type="text" id="sIgdbSec" placeholder="Client Secret de dev.twitch.tv" oninput="saveKey('igdb_secret',this.value)" onpaste="setTimeout(()=>saveKey('igdb_secret',this.value),50)"><div style="margin-top:0.3rem;font-size:0.68rem;color:var(--text3)">Portadas IGDB. Gratis en <a href="https://dev.twitch.tv/console" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">dev.twitch.tv/console</a></div></div>
             </div>
-            <div class="fg"><label>Username PSN Profiles</label><input type="text" id="sPsn" placeholder="Tu username de PSN" oninput="saveKey('psn',this.value)" onpaste="setTimeout(()=>saveKey('psn',this.value),50)"><div style="margin-top:0.3rem" id="psnLink"></div></div>
             <div class="fg"><label>Tu nombre</label><input type="text" id="sName" placeholder="Nombre para tu perfil" oninput="saveKey('name',this.value)" onpaste="setTimeout(()=>saveKey('name',this.value),50)"></div>
             <div style="border-top:1px solid rgba(255,255,255,0.06);margin:1rem 0;padding-top:1rem">
                 <div class="fg"><label>Mis consolas</label><div style="font-size:0.68rem;color:var(--text3);margin-bottom:0.5rem">Selecciona las consolas que tenes. Los resultados del catalogo se filtran en base a esto.</div><div id="sConsolesGrid" style="display:flex;flex-wrap:wrap;gap:5px"></div></div>
@@ -921,19 +920,45 @@ function _showAuthForm(form){
     document.getElementById('authRegError').textContent='';
 }
 
+function _loginAttemptsKey(u){return 'gv_login_attempts_'+u;}
+function _getLoginLockout(u){
+    try{var d=JSON.parse(localStorage.getItem(_loginAttemptsKey(u))||'null');
+        if(!d)return null;
+        if(d.lockedUntil&&Date.now()<d.lockedUntil)return d.lockedUntil;
+        return null;
+    }catch(e){return null;}
+}
+function _registerFailedLogin(u){
+    var key=_loginAttemptsKey(u);
+    var d;try{d=JSON.parse(localStorage.getItem(key)||'null');}catch(e){d=null;}
+    if(!d||Date.now()>(d.windowStart||0)+900000){d={count:0,windowStart:Date.now()};}
+    d.count=(d.count||0)+1;
+    if(d.count>=5){d.lockedUntil=Date.now()+120000;}
+    localStorage.setItem(key,JSON.stringify(d));
+    return d;
+}
+function _clearLoginAttempts(u){localStorage.removeItem(_loginAttemptsKey(u));}
 async function _doLogin(){
     var u=document.getElementById('authLoginUser').value.trim();
     var p=document.getElementById('authLoginPass').value;
     var err=document.getElementById('authLoginError');
     var btn=document.getElementById('authLoginBtn');
     if(!u||!p){err.textContent='Completá usuario y contraseña';return;}
+    var uKey=u.toLowerCase();
+    var locked=_getLoginLockout(uKey);
+    if(locked){var secs=Math.ceil((locked-Date.now())/1000);err.textContent='Demasiados intentos fallidos. Esperá '+secs+' segundos.';return;}
     btn.disabled=true;btn.textContent='Iniciando...';
     try{
         var idx=await _loadUsersIndex();
-        var userData=idx.users&&idx.users[u.toLowerCase()];
-        if(!userData){err.textContent='Usuario no encontrado';btn.disabled=false;btn.textContent='Iniciar sesión';return;}
+        var userData=idx.users&&idx.users[uKey];
+        if(!userData){_registerFailedLogin(uKey);err.textContent='Usuario no encontrado';btn.disabled=false;btn.textContent='Iniciar sesión';return;}
         var hash=await _hashPw(p,userData.salt);
-        if(hash!==userData.hash){err.textContent='Contraseña incorrecta';btn.disabled=false;btn.textContent='Iniciar sesión';return;}
+        if(hash!==userData.hash){
+            var att=_registerFailedLogin(uKey);
+            err.textContent=att.lockedUntil?'Demasiados intentos fallidos. Esperá 2 minutos.':'Contraseña incorrecta';
+            btn.disabled=false;btn.textContent='Iniciar sesión';return;
+        }
+        _clearLoginAttempts(uKey);
         _currentUser={id:userData.displayName,username:u.toLowerCase(),salt:userData.salt,role:userData.role||(u.toLowerCase()===ADMIN_USERNAME?'admin':'user'),createdAt:userData.createdAt,lastUsernameChange:userData.lastUsernameChange||0,lastPasswordChange:userData.lastPasswordChange||0};
         localStorage.setItem(AUTH_SESSION_KEY,JSON.stringify(_currentUser));
         document.getElementById('authModal').classList.remove('open');
@@ -1356,20 +1381,20 @@ async function openAdminStats(){
         var idx=await _dbGet('_users_index');
         var users=(idx&&idx.users)?Object.keys(idx.users):[];
         var now=Date.now();
-        var rows=[];
         var onlineCount=0;
-        for(var i=0;i<users.length;i++){
-            var uname=users[i];
+        var rows=await Promise.all(users.map(async function(uname){
             var ud=idx.users[uname];
-            var lib=await _dbGet('lib_'+uname);
+            var libP=_dbGet('lib_'+uname);
+            var profP=_dbGet('profile_'+uname);
+            var presP=_dbGet('presence_'+uname);
+            var results=await Promise.all([libP,profP,presP]);
+            var lib=results[0],prof=results[1],pres=results[2];
             var glist=Array.isArray(lib)?lib:[];
-            var prof=await _dbGet('profile_'+uname);
             var consoles=(prof&&Array.isArray(prof.consoles))?prof.consoles:[];
-            var pres=await _dbGet('presence_'+uname);
             var online=pres&&pres.ts&&(now-pres.ts)<180000;
-            if(online)onlineCount++;
-            rows.push({username:ud.displayName||uname,usernameKey:uname,role:ud.role||'user',games:glist.length,consoles:consoles,online:online});
-        }
+            return{username:ud.displayName||uname,usernameKey:uname,role:ud.role||'user',games:glist.length,consoles:consoles,online:online};
+        }));
+        for(var i=0;i<rows.length;i++){if(rows[i].online)onlineCount++;}
         _adminRowsCache={total:users.length,online:onlineCount,rows:rows};
         _renderAdminStats(users.length,onlineCount,rows);
     }catch(e){
@@ -1781,7 +1806,17 @@ function _rawgToCard(g){
     var platList=(g.platforms||[]).map(function(p){return _rawgPlatformLabel(p.platform.name);});
     return{id:g.id,name:g.name,cover:g.background_image||'',metacritic:g.metacritic||0,year:g.released?parseInt(g.released.slice(0,4),10):0,platforms:platList.join(', '),platList:platList,userRating:g.rating?Math.round(g.rating*20):0,rawgId:g.id};
 }
+var _igdbPostCache={};
+var _IGDB_CACHE_TTL=600000;
 async function _igdbPost(action,params,_retry){
+    var cacheKey=action+'|'+JSON.stringify(params);
+    var cached=_igdbPostCache[cacheKey];
+    if(cached&&Date.now()-cached.ts<_IGDB_CACHE_TTL)return cached.data;
+    var result=await _igdbPostReal(action,params,_retry);
+    if(result&&result.results&&result.results.length)_igdbPostCache[cacheKey]={data:result,ts:Date.now()};
+    return result;
+}
+async function _igdbPostReal(action,params,_retry){
     var key=gk('rawg');
     if(!key)return null;
     var ctrl=new AbortController();var tid=setTimeout(function(){ctrl.abort();},15000);
@@ -5565,9 +5600,7 @@ function openSettings(){
         document.getElementById('sIgdbId').value=gk('igdb_id');
         document.getElementById('sIgdbSec').value=gk('igdb_secret');
     }
-    document.getElementById('sPsn').value=gk('psn');
     document.getElementById('sName').value=gk('name');
-    updatePsnLink();
     renderConsolesGrid();
     var acEl=document.getElementById('settingsAccountInfo');
     if(acEl){
@@ -5580,17 +5613,14 @@ function openSettings(){
     }
     openModal('settingsModal');
 }
-function updatePsnLink(){const p=gk('psn'),el=document.getElementById('psnLink');el.innerHTML=p?'<a href="https://psnprofiles.com/'+escHtml(p)+'" target="_blank" rel="noopener" style="color:var(--accent);font-size:0.75rem;text-decoration:none">Ver perfil de '+escHtml(p)+' ↗</a>':'<span style="font-size:0.7rem;color:var(--text3)">Para vincular juegos PlayStation</span>';}
 function exportData(){
-    if(!_isAdmin()){showToast('Solo el administrador puede exportar','error');return;}
-    const blob=new Blob([JSON.stringify({games,psnUsername:gk('psn'),exportDate:new Date().toISOString()},null,2)],{type:'application/json'});
+    const blob=new Blob([JSON.stringify({games,exportDate:new Date().toISOString()},null,2)],{type:'application/json'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='biblioteca-juegos-backup.json';a.click();URL.revokeObjectURL(a.href);showToast('Backup descargado','success');
 }
 function importData(e){
-    if(!_isAdmin()){showToast('Solo el administrador puede importar','error');return;}
     const f=e.target.files[0];if(!f)return;
     const r=new FileReader();
-    r.onload=function(ev){try{const d=JSON.parse(ev.target.result);if(d.games&&Array.isArray(d.games)){games=d.games;save();if(d.psnUsername)localStorage.setItem(PSN_K,d.psnUsername);showToast('Importados '+games.length+' juegos','success');refreshViews();}else showToast('Formato invalido','error');}catch{showToast('Error al leer archivo','error');}};
+    r.onload=function(ev){try{const d=JSON.parse(ev.target.result);if(d.games&&Array.isArray(d.games)){games=d.games;save();showToast('Importados '+games.length+' juegos','success');refreshViews();}else showToast('Formato invalido','error');}catch{showToast('Error al leer archivo','error');}};
     r.readAsText(f);e.target.value='';
 }
 const dz=document.getElementById('importZone');
