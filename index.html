@@ -5376,32 +5376,35 @@ async function viewGameSaga(name){
     document.body.appendChild(ov);
     var box=ov.firstElementChild;
     try{
-        var q=cleanSearchName(name);
-        var srResp=await fetch(PROXY_ORIGIN+'/rawg/games?search='+encodeURIComponent(q)+'&page_size=1');
-        var sagaErr=null;
-        if(!srResp.ok){var et0=await srResp.text().catch(function(){return'';});sagaErr='RAWG: HTTP '+srResp.status+' '+et0.slice(0,150);}
-        var sr=sagaErr?{}:await srResp.json();
-        var best=sr.results&&sr.results[0];
-        if(!best&&!sagaErr){
-            var shortName=extractSagaFromName(name)||name.split(/[:\-–]/)[0].trim();
-            if(shortName&&shortName.toLowerCase()!==q.toLowerCase()){
-                var sr2Resp=await fetch(PROXY_ORIGIN+'/rawg/games?search='+encodeURIComponent(shortName)+'&page_size=1');
-                if(!sr2Resp.ok){var et1=await sr2Resp.text().catch(function(){return'';});sagaErr='RAWG: HTTP '+sr2Resp.status+' '+et1.slice(0,150);}
-                else{var sr2=await sr2Resp.json();best=sr2.results&&sr2.results[0];}
-            }
-        }
-        if(!best){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">No se encontró el juego en RAWG'+(sagaErr?'<br><span style="color:var(--red);font-size:0.7rem">Debug: '+escHtml(sagaErr)+'</span>':'')+'</div>';return;}
-        var gs=await fetch(PROXY_ORIGIN+'/rawg/games/'+best.id+'/game-series?page_size=20').then(function(r){return r.json();});
-        var list=gs.results||[];
+        var auth=await getIGDBToken();
+        if(!auth){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">IGDB no está disponible ahora mismo</div>';return;}
+        var q=cleanSearchName(name).replace(/"/g,'');
+        var searchBody='search "'+q+'"; fields name,collection.name,collection.id,franchises.id,franchises.name; limit 1;';
+        var r1=await fetch(PROXY_ORIGIN+'/igdb/games',{method:'POST',headers:{'Client-ID':auth.cid,'Authorization':'Bearer '+auth.token},body:searchBody});
+        if(!r1.ok){var et=await r1.text().catch(function(){return'';});box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">No se encontró el juego en IGDB<br><span style="color:var(--red);font-size:0.7rem">Debug: IGDB HTTP '+r1.status+' '+escHtml(et.slice(0,150))+'</span></div>';return;}
+        var found=(await r1.json())[0];
+        if(!found){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">No se encontró el juego en IGDB</div>';return;}
+        var collId=found.collection&&found.collection.id;
+        var franchiseIds=(found.franchises||[]).map(function(f){return f.id;});
+        var whereClauses=[];
+        if(collId)whereClauses.push('collection = '+collId);
+        if(franchiseIds.length)whereClauses.push('franchises = ('+franchiseIds.join(',')+')');
+        if(!whereClauses.length){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">'+escHtml(name)+' no pertenece a ninguna saga detectada</div>';return;}
+        var listBody='fields name,cover.image_id,first_release_date,platforms.name; where ('+whereClauses.join(' | ')+'); limit 24;';
+        var r2=await fetch(PROXY_ORIGIN+'/igdb/games',{method:'POST',headers:{'Client-ID':auth.cid,'Authorization':'Bearer '+auth.token},body:listBody});
+        if(!r2.ok){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">Error al buscar los juegos de la saga</div>';return;}
+        var list=(await r2.json())||[];
+        list.sort(function(a,b){return(a.first_release_date||0)-(b.first_release_date||0);});
         if(!list.length){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">'+escHtml(name)+' no pertenece a ninguna saga detectada</div>';return;}
         var h='<div style="font-size:0.95rem;font-weight:800;margin-bottom:0.8rem;text-align:center">Saga de '+escHtml(name)+'</div>';
         h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">';
         for(var i=0;i<list.length;i++){
             var g=list[i];
-            var yr=(g.released||'').split('-')[0]||'';
+            var yr=g.first_release_date?new Date(g.first_release_date*1000).getFullYear():'';
+            var cover=g.cover&&g.cover.image_id?'https://images.igdb.com/igdb/image/upload/t_cover_big/'+g.cover.image_id+'.jpg':'';
             h+='<div onclick="addSagaGame('+i+')" data-saga-idx="'+i+'" style="cursor:pointer;text-align:center">'+
                '<div style="width:100%;aspect-ratio:3/4;border-radius:8px;overflow:hidden;background:var(--bg-elevated)">'+
-               (g.background_image?'<img src="'+escHtml(g.background_image)+'" style="width:100%;height:100%;object-fit:cover" referrerpolicy="no-referrer" alt="">':'')+
+               (cover?'<img src="'+cover+'" style="width:100%;height:100%;object-fit:cover" referrerpolicy="no-referrer" alt="">':'')+
                '</div><div style="font-size:0.65rem;margin-top:4px;color:var(--text2)">'+escHtml(g.name)+'</div>'+
                (yr?'<div style="font-size:0.6rem;color:var(--text3)">'+yr+'</div>':'')+
                '</div>';
@@ -5415,19 +5418,20 @@ async function viewGameSaga(name){
 function addSagaGame(idx){
     var g=window._sagaResults&&window._sagaResults[idx];if(!g)return;
     var ov=document.getElementById('sagaViewOverlay');if(ov)ov.remove();
-    var plats=(g.platforms||[]).map(function(p){return p.platform&&p.platform.name;}).filter(Boolean).join(', ');
+    var plats=(g.platforms||[]).map(function(p){return p.name;}).filter(Boolean).join(', ');
+    var cover=g.cover&&g.cover.image_id?'https://images.igdb.com/igdb/image/upload/t_1080p/'+g.cover.image_id+'.jpg':'';
     filterPlatforms(plats);
     document.getElementById('fName').value=g.name;
-    document.getElementById('fCover').value=g.background_image||'';
-    document.getElementById('fMC').value=g.metacritic||'';
+    document.getElementById('fCover').value=cover;
     document.getElementById('fSaga').value='';
     proxySteamCover(g.name).then(function(sc){if(sc){document.getElementById('fCover').value=sc;lastRawgCover=sc;}});
-    var ryEl=document.getElementById('fReleaseYear');if(ryEl)ryEl.value=g.released?new Date(g.released).getFullYear():0;
+    var ryEl=document.getElementById('fReleaseYear');if(ryEl)ryEl.value=g.first_release_date?new Date(g.first_release_date*1000).getFullYear():0;
     document.getElementById('fPlatform').value='';
-    lastRawgId=g.id;lastRawgCover=g.background_image||null;
+    lastRawgId=null;lastRawgCover=cover||null;
     if(!document.getElementById('addModal').classList.contains('open'))openAddModalPrefilled();
     document.getElementById('fPlatformPicker').scrollIntoView({behavior:'smooth',block:'center'});
-    if(g.id)trySagaDetect(g.id,g.name);
+    var sagaField=document.getElementById('fSaga');
+    if(sagaField&&!sagaField.value.trim()){var guess=extractSagaFromName(g.name);if(guess)sagaField.value=guess;}
 }
 function selectRAWG(el){
     var name=el.dataset.name,cover=el.dataset.cover,mc=el.dataset.mc,plats=el.dataset.platforms;
