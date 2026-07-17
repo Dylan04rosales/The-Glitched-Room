@@ -6043,7 +6043,7 @@ async function steamImportRun(sid){
 
 // ===== SORTEO DE BACKLOG =====
 function openRandomBacklogPicker(){
-    var pool=games.filter(function(g){return g.status==='Quiero';});
+    var pool=games.filter(function(g){return g.status==='Lo tengo';});
     var myConsoles=getMyConsoles();
     if(myConsoles.size){
         var filtered=pool.filter(function(g){
@@ -6052,7 +6052,7 @@ function openRandomBacklogPicker(){
         });
         if(filtered.length)pool=filtered;
     }
-    if(!pool.length){showToast('No tenés juegos en "Quiero" para sortear','info');return;}
+    if(!pool.length){showToast('No tenés juegos en "Lo tengo" para sortear','info');return;}
     var pick=pool[Math.floor(Math.random()*pool.length)];
     var ov=document.getElementById('randomPickOverlay');
     var body=document.getElementById('randomPickBody');
