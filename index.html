@@ -4000,20 +4000,102 @@ function renderGestion(){
 async function renderGestionSagas(){
     var box=document.getElementById('gestionSagasBox');if(!box)return;
     var log=await _dbGet('saga_search_log')||[];
-    if(!log.length){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.82rem;padding:1.5rem 0">Todavía no se buscó ninguna saga</div>';return;}
-    var h='';
-    for(var i=log.length-1;i>=0;i--){
-        var e=log[i];
-        var d=new Date(e.ts);
-        var fecha=d.toLocaleDateString()+' '+d.toLocaleTimeString().slice(0,5);
-        h+='<div style="padding:0.6rem 0;border-bottom:1px solid var(--border)">';
-        h+='<div style="display:flex;justify-content:space-between;gap:8px"><span style="font-size:0.85rem;font-weight:700">'+escHtml(e.query)+'</span><span style="font-size:0.65rem;color:var(--text3);white-space:nowrap">'+fecha+'</span></div>';
-        h+='<div style="font-size:0.7rem;color:var(--text3);margin-top:2px">'+escHtml(e.user||'anon')+' · '+(e.found?e.found+' juego'+(e.found!==1?'s':'')+' encontrado'+(e.found!==1?'s':''):'sin saga detectada')+'</div>';
+    var sagaCounts={},gameCounts={};
+    for(var i=0;i<log.length;i++){
+        var e=log[i];if(!e||!e.query)continue;
+        var gKey=e.query.trim().toLowerCase();
+        if(!gameCounts[gKey])gameCounts[gKey]={name:e.query.trim(),count:0};
+        gameCounts[gKey].count++;
+        var sName=normalizeSagaCase(extractSagaFromName(e.query))||normalizeSagaCase(e.query.trim());
+        var sKey=sName.toLowerCase();
+        if(!sagaCounts[sKey])sagaCounts[sKey]={name:sName,count:0};
+        sagaCounts[sKey].count++;
+    }
+    var sagaRank=Object.keys(sagaCounts).map(function(k){return sagaCounts[k];}).sort(function(a,b){return b.count-a.count;}).slice(0,10);
+    var gameRank=Object.keys(gameCounts).map(function(k){return gameCounts[k];}).sort(function(a,b){return b.count-a.count;});
+    var topGame=gameRank[0];
+    var addedRank=await _computeMostAddedGames();
+
+    function _rankBlock(title,color,items,unitSingular,unitPlural){
+        var h='<div style="font-size:0.72rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.5rem">'+title+'</div>';
+        if(!items.length){h+='<div style="text-align:center;color:var(--text3);font-size:0.8rem;padding:1rem 0 1.25rem">Todavía no hay datos</div>';return h;}
+        h+='<div style="background:var(--bg-surface);border-radius:12px;padding:0.2rem 0.8rem;margin-bottom:1.25rem">';
+        for(var i=0;i<items.length;i++){
+            var it=items[i];
+            h+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:0.5rem 0;'+(i<items.length-1?'border-bottom:1px solid var(--border)':'')+'"><span style="font-size:0.82rem;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(i+1)+'. '+escHtml(it.name)+'</span><span style="font-size:0.72rem;color:'+color+';font-weight:700;white-space:nowrap">'+it.count+' '+(it.count!==1?unitPlural:unitSingular)+'</span></div>';
+        }
         h+='</div>';
+        return h;
+    }
+    var h='';
+    h+=_rankBlock('🏆 Sagas más buscadas','var(--accent)',sagaRank,'búsqueda','búsquedas');
+    if(topGame)h+='<div id="gestionTopGameBox" style="margin-bottom:1.25rem"></div>';
+    h+=_rankBlock('🔍 Juegos más buscados','var(--accent)',gameRank.slice(0,10),'búsqueda','búsquedas');
+    h+=_rankBlock('📚 Juegos más agregados a la biblioteca','var(--green)',addedRank.slice(0,10),'usuario','usuarios');
+    h+='<div style="font-size:0.72rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.5rem">🕘 Historial detallado</div>';
+    if(!log.length){h+='<div style="text-align:center;color:var(--text3);font-size:0.82rem;padding:1rem 0">Todavía no se buscó ninguna saga</div>';}
+    else{
+        for(var i=log.length-1;i>=0;i--){
+            var e=log[i];
+            var d=new Date(e.ts);
+            var fecha=d.toLocaleDateString()+' '+d.toLocaleTimeString().slice(0,5);
+            h+='<div style="padding:0.6rem 0;border-bottom:1px solid var(--border)">';
+            h+='<div style="display:flex;justify-content:space-between;gap:8px"><span style="font-size:0.85rem;font-weight:700">'+escHtml(e.query)+'</span><span style="font-size:0.65rem;color:var(--text3);white-space:nowrap">'+fecha+'</span></div>';
+            h+='<div style="font-size:0.7rem;color:var(--text3);margin-top:2px">'+escHtml(e.user||'anon')+' · '+(e.found?e.found+' juego'+(e.found!==1?'s':'')+' encontrado'+(e.found!==1?'s':''):'sin saga detectada')+'</div>';
+            h+='</div>';
+        }
     }
     box.innerHTML=h;
+    if(topGame)_loadTopSearchedGameCard(topGame.name);
+}
+async function _computeMostAddedGames(){
+    try{
+        var idx=await _dbGet('_users_index');
+        var users=(idx&&idx.users)?Object.keys(idx.users):[];
+        var libs=await Promise.all(users.map(function(uname){return _dbGet('lib_'+uname);}));
+        var counts={};
+        for(var i=0;i<libs.length;i++){
+            var lib=Array.isArray(libs[i])?libs[i]:[];
+            var seenInLib={};
+            for(var j=0;j<lib.length;j++){
+                var g=lib[j];if(!g||!g.name)continue;
+                var key=g.name.trim().toLowerCase();
+                if(seenInLib[key])continue;
+                seenInLib[key]=true;
+                if(!counts[key])counts[key]={name:g.name.trim(),count:0};
+                counts[key].count++;
+            }
+        }
+        return Object.keys(counts).map(function(k){return counts[k];}).sort(function(a,b){return b.count-a.count;});
+    }catch(e){return[];}
+}
+async function _loadTopSearchedGameCard(name){
+    var box=document.getElementById('gestionTopGameBox');if(!box)return;
+    box.innerHTML='<div style="font-size:0.72rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">⭐ Juego más buscado</div><div style="color:var(--text3);font-size:0.8rem">Cargando...</div>';
+    try{
+        var auth=await getIGDBToken();
+        if(!auth){box.innerHTML='';return;}
+        var q=cleanSearchName(name).replace(/"/g,'');
+        var body='search "'+q+'"; fields name,cover.image_id,summary,first_release_date; limit 5;';
+        var r=await fetch(PROXY_ORIGIN+'/igdb/games',{method:'POST',headers:{'Client-ID':auth.cid,'Authorization':'Bearer '+auth.token},body:body});
+        if(!r.ok){box.innerHTML='';return;}
+        var results=await r.json();
+        if(!results||!results.length){box.innerHTML='';return;}
+        var qLower=q.toLowerCase();
+        var g=results.find(function(c){return c.name.toLowerCase()===qLower;})||results[0];
+        var cover=g.cover&&g.cover.image_id?'https://images.igdb.com/igdb/image/upload/t_cover_big/'+g.cover.image_id+'.jpg':'';
+        var yr=g.first_release_date?new Date(g.first_release_date*1000).getFullYear():'';
+        var h='<div style="font-size:0.72rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">⭐ Juego más buscado</div>';
+        h+='<div style="display:flex;gap:0.8rem;background:var(--bg-surface);border-radius:12px;padding:0.75rem">';
+        h+=cover?'<img src="'+cover+'" style="width:70px;height:93px;object-fit:cover;border-radius:8px;flex-shrink:0" referrerpolicy="no-referrer">':'<div style="width:70px;height:93px;border-radius:8px;background:var(--bg-elevated);flex-shrink:0"></div>';
+        h+='<div style="min-width:0"><div style="font-size:0.9rem;font-weight:700">'+escHtml(g.name)+(yr?' <span style="font-weight:400;color:var(--text3);font-size:0.75rem">('+yr+')</span>':'')+'</div>';
+        h+='<div style="font-size:0.72rem;color:var(--text3);margin-top:0.4rem;line-height:1.4">'+(g.summary?escHtml(g.summary):'Sin descripción disponible')+'</div></div>';
+        h+='</div>';
+        box.innerHTML=h;
+    }catch(e){box.innerHTML='';}
 }
 var VERSION_HISTORY=[
+    {v:'1.9',d:'Estadísticas en Sagas buscadas',items:['🎮 Sagas buscadas ahora muestra un ranking de las sagas más buscadas','Debajo del ranking, ficha con descripción e imagen del juego individual más buscado (vía IGDB)','Ranking de los juegos más buscados','Ranking de los juegos más agregados a la biblioteca, contando en cuántos usuarios distintos aparece cada uno','Se mantiene el historial detallado de búsquedas de saga debajo de los rankings']},
     {v:'1.8',d:'Vulnerabilidad de seguridad del backend corregida',items:['Login y registro ahora se verifican 100% en el servidor: la contraseña y su hash nunca salen del Worker','Sesión con token: cada acción que escribe datos requiere un token de sesión válido emitido por el servidor','Los endpoints /kv/get, /kv/set y /kv/delete ya no aceptan escrituras sin autenticación; cada usuario solo puede modificar su propia biblioteca/perfil/presencia (o un admin)','La lista de usuarios (_users_index) nunca vuelve a incluir hash ni salt de contraseñas al leerla desde el cliente','Cambio de nombre de usuario, cambio de contraseña y borrado de cuenta migrados a endpoints protegidos del Worker','Se dejó de enviar el hash/salt de la contraseña al servicio externo de catálogo en cada sincronización']},
     {v:'1.0',d:'Migración inicial',items:['Migración completa desde Vento a hosting independiente (GitHub Pages)','Reemplazo del backend privado de Vento por almacenamiento local y luego Cloudflare Workers','Login/registro con contraseñas encriptadas, con respaldo para navegadores sin soporte de encriptación']},
     {v:'1.1',d:'Búsqueda y catálogo',items:['Integración real con RAWG e IGDB a través de un proxy propio (Cloudflare Worker) para evitar bloqueos de CORS','Arreglo de "Buscar", "Explorar" (plataformas, géneros, modos) y recomendaciones, que no traían resultados','Sección "Populares ahora" basada en tendencias/popularidad real','Buscador unificado: biblioteca propia y catálogo externo en un solo lugar']},
