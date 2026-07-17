@@ -804,6 +804,7 @@ function _validateUsername(u){
     return null;
 }
 
+function _authHeaders(){return(_currentUser&&_currentUser.token)?{'Authorization':'Bearer '+_currentUser.token}:{};}
 async function _dbGet(key){
     try{
         var r=await fetch(PROXY_ORIGIN+'/kv/get?key='+encodeURIComponent(key));
@@ -814,7 +815,15 @@ async function _dbGet(key){
 }
 async function _dbSet(key,data,exists){
     try{
-        var r=await fetch(PROXY_ORIGIN+'/kv/set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:key,value:JSON.stringify(data)})});
+        var r=await fetch(PROXY_ORIGIN+'/kv/set',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},_authHeaders()),body:JSON.stringify({key:key,value:JSON.stringify(data)})});
+        if(!r.ok)return false;
+        var d=await r.json();
+        return!!(d&&d.ok);
+    }catch(e){return false;}
+}
+async function _dbDelete(key){
+    try{
+        var r=await fetch(PROXY_ORIGIN+'/kv/delete?key='+encodeURIComponent(key),{method:'POST',headers:_authHeaders()});
         if(!r.ok)return false;
         var d=await r.json();
         return!!(d&&d.ok);
@@ -857,14 +866,10 @@ async function _syncUserCatalog(){
     if(!CATALOG_API||!_currentUser)return;
     try{
         var uname=_currentUser.username;
-        var idx=_usersIndex||await _loadUsersIndex();
-        var ud=idx.users&&idx.users[uname];
         var data={
             usuario:uname,
             display_name:_currentUser.id||uname,
             rol:_currentUser.role==='admin'?'Admin':'Usuario',
-            password_hash:ud?ud.hash:'',
-            password_salt:ud?ud.salt:'',
             catalogo:_formatCatalog(games)
         };
         var exists=_catalogExists[uname];
@@ -983,23 +988,13 @@ async function _doLogin(){
     if(locked){var secs=Math.ceil((locked-Date.now())/1000);err.textContent='Demasiados intentos fallidos. Esperá '+secs+' segundos.';return;}
     btn.disabled=true;btn.textContent='Iniciando...';
     try{
-        try{
-            var srvCheck=await fetch(PROXY_ORIGIN+'/auth/login-check?user='+encodeURIComponent(uKey)).then(function(r){return r.json();});
-            if(srvCheck&&srvCheck.locked){err.textContent='Demasiados intentos fallidos. Esperá '+srvCheck.secondsLeft+' segundos.';btn.disabled=false;btn.textContent='Iniciar sesión';return;}
-        }catch(eSrv){}
-        var idx=await _loadUsersIndex();
-        var userData=idx.users&&idx.users[uKey];
-        if(!userData){_registerFailedLogin(uKey);fetch(PROXY_ORIGIN+'/auth/login-fail',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:uKey})}).catch(function(){});err.textContent='Usuario no encontrado';btn.disabled=false;btn.textContent='Iniciar sesión';return;}
-        var hash=await _hashPw(p,userData.salt);
-        if(hash!==userData.hash){
-            var att=_registerFailedLogin(uKey);
-            fetch(PROXY_ORIGIN+'/auth/login-fail',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:uKey})}).catch(function(){});
-            err.textContent=att.lockedUntil?'Demasiados intentos fallidos. Esperá 2 minutos.':'Contraseña incorrecta';
-            btn.disabled=false;btn.textContent='Iniciar sesión';return;
-        }
+        var resp=await fetch(PROXY_ORIGIN+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:uKey,password:p})});
+        var d=await resp.json();
+        if(d&&d.locked){err.textContent='Demasiados intentos fallidos. Esperá '+d.secondsLeft+' segundos.';btn.disabled=false;btn.textContent='Iniciar sesión';return;}
+        if(!resp.ok||!d||!d.ok){_registerFailedLogin(uKey);err.textContent=(d&&d.error)||'Error al iniciar sesión';btn.disabled=false;btn.textContent='Iniciar sesión';return;}
         _clearLoginAttempts(uKey);
-        fetch(PROXY_ORIGIN+'/auth/login-ok',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:uKey})}).catch(function(){});
-        _currentUser={id:userData.displayName,username:u.toLowerCase(),salt:userData.salt,role:userData.role||(u.toLowerCase()===ADMIN_USERNAME?'admin':'user'),createdAt:userData.createdAt,lastUsernameChange:userData.lastUsernameChange||0,lastPasswordChange:userData.lastPasswordChange||0};
+        var ud=d.user;
+        _currentUser={id:ud.displayName,username:ud.username,role:ud.role,createdAt:ud.createdAt,lastUsernameChange:ud.lastUsernameChange||0,lastPasswordChange:ud.lastPasswordChange||0,token:d.token};
         localStorage.setItem(AUTH_SESSION_KEY,JSON.stringify(_currentUser));
         document.getElementById('authModal').classList.remove('open');
         await _loadUserLibrary();
@@ -1024,18 +1019,12 @@ async function _doRegister(){
     if(p!==p2){err.textContent='Las contraseñas no coinciden';return;}
     btn.disabled=true;btn.textContent='Creando cuenta...';
     try{
+        var resp=await fetch(PROXY_ORIGIN+'/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
+        var d=await resp.json();
+        if(!resp.ok||!d||!d.ok){err.textContent=(d&&d.error)||'Error al crear la cuenta';btn.disabled=false;btn.textContent='Crear cuenta';return;}
         _usersIndex=null;
-        var idx=await _loadUsersIndex();
-        if(idx.users&&idx.users[u.toLowerCase()]){err.textContent='Nombre de usuario ya en uso';btn.disabled=false;btn.textContent='Crear cuenta';return;}
-        var salt=crypto.getRandomValues(new Uint8Array(16));
-        var saltHex=Array.from(salt).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
-        var hash=await _hashPw(p,saltHex);
-        if(!idx.users)idx.users={};
-        var role=u.toLowerCase()===ADMIN_USERNAME?'admin':'user';
-        idx.users[u.toLowerCase()]={displayName:u,hash:hash,salt:saltHex,role:role,createdAt:Date.now(),lastUsernameChange:0,lastPasswordChange:0};
-        var ok=await _saveUsersIndex();
-        if(!ok){err.textContent='Error al guardar. Intentá de nuevo.';btn.disabled=false;btn.textContent='Crear cuenta';return;}
-        _currentUser={id:u,username:u.toLowerCase(),salt:saltHex,role:role,createdAt:Date.now(),lastUsernameChange:0,lastPasswordChange:0};
+        var ud=d.user;
+        _currentUser={id:ud.displayName,username:ud.username,role:ud.role,createdAt:ud.createdAt,lastUsernameChange:0,lastPasswordChange:0,token:d.token};
         localStorage.setItem(AUTH_SESSION_KEY,JSON.stringify(_currentUser));
         games=[];localStorage.setItem(SK,'[]');
         await _saveUserLibrary();
@@ -1131,6 +1120,7 @@ async function doLogout(){
     if(!confirm('¿Cerrar sesión?'))return;
     try{if(_cloudTimer){clearTimeout(_cloudTimer);_cloudTimer=null;}await _saveUserLibrary();}catch(e){}
     if(_presenceTimer){clearInterval(_presenceTimer);_presenceTimer=null;}
+    if(_currentUser&&_currentUser.token){try{await fetch(PROXY_ORIGIN+'/auth/logout',{method:'POST',headers:_authHeaders()});}catch(e){}}
     localStorage.removeItem(AUTH_SESSION_KEY);
     _currentUser=null;_userProfile=null;_userProfileExists=false;
     games=[];
@@ -1140,60 +1130,30 @@ async function doLogout(){
 async function _changeUsername(newName){
     if(!_currentUser)return 'No hay sesión';
     var err=_validateUsername(newName);if(err)return err;
-    var now=Date.now();
-    var lastChange=_currentUser.lastUsernameChange||0;
-    var daysSince=(now-lastChange)/86400000;
-    if(lastChange&&daysSince<30)return 'Podés cambiar el nombre en '+Math.ceil(30-daysSince)+' días';
-    _usersIndex=null;
-    var idx=await _loadUsersIndex();
-    if(idx.users[newName.toLowerCase()]&&newName.toLowerCase()!==_currentUser.username)return 'Nombre no disponible';
-    var oldKey=_currentUser.username;
-    var userData=idx.users[oldKey];
-    if(!userData)return 'Error: usuario no encontrado';
-    delete idx.users[oldKey];
-    userData.displayName=newName;
-    userData.lastUsernameChange=now;
-    if(userData.role==='admin')userData.role='admin';
-    idx.users[newName.toLowerCase()]=userData;
-    var ok=await _saveUsersIndex();
-    if(!ok)return 'Error al guardar';
-    var oldLibKey='lib_'+oldKey;
-    var newLibKey='lib_'+newName.toLowerCase();
-    var libData=await _dbGet(oldLibKey);
-    if(Array.isArray(libData)){await _dbSet(newLibKey,libData,false);_cloudExists=true;}
-    var oldProfKey='profile_'+oldKey;
-    var newProfKey='profile_'+newName.toLowerCase();
-    var profData=await _dbGet(oldProfKey);
-    if(profData&&typeof profData==='object'){await _dbSet(newProfKey,profData,false);_userProfileExists=true;}
-    _currentUser.id=newName;_currentUser.username=newName.toLowerCase();_currentUser.lastUsernameChange=now;
-    localStorage.setItem(AUTH_SESSION_KEY,JSON.stringify(_currentUser));
-    return null;
+    try{
+        var resp=await fetch(PROXY_ORIGIN+'/auth/update-username',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},_authHeaders()),body:JSON.stringify({newUsername:newName})});
+        var d=await resp.json();
+        if(!resp.ok||!d||!d.ok)return(d&&d.error)||'Error al cambiar el nombre';
+        var ud=d.user;
+        _currentUser.id=ud.displayName;_currentUser.username=ud.username;_currentUser.lastUsernameChange=ud.lastUsernameChange;_currentUser.token=d.token;
+        localStorage.setItem(AUTH_SESSION_KEY,JSON.stringify(_currentUser));
+        _usersIndex=null;
+        return null;
+    }catch(e){return 'Error: '+e.message;}
 }
 
 async function _changePassword(oldPw,newPw){
     if(!_currentUser)return 'No hay sesión';
     var err=_validatePw(newPw);if(err)return err;
-    var now=Date.now();
-    var lastChange=_currentUser.lastPasswordChange||0;
-    var daysSince=(now-lastChange)/86400000;
-    if(lastChange&&daysSince<30)return 'Podés cambiar la contraseña en '+Math.ceil(30-daysSince)+' días';
-    _usersIndex=null;
-    var idx=await _loadUsersIndex();
-    var userData=idx.users[_currentUser.username];
-    if(!userData)return 'Error: usuario no encontrado';
-    var oldHash=await _hashPw(oldPw,userData.salt);
-    if(oldHash!==userData.hash)return 'Contraseña actual incorrecta';
-    var newSalt=crypto.getRandomValues(new Uint8Array(16));
-    var newSaltHex=Array.from(newSalt).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
-    var newHash=await _hashPw(newPw,newSaltHex);
-    userData.hash=newHash;userData.salt=newSaltHex;userData.lastPasswordChange=now;
-    idx.users[_currentUser.username]=userData;
-    var ok=await _saveUsersIndex();
-    if(!ok)return 'Error al guardar';
-    _currentUser.salt=newSaltHex;_currentUser.lastPasswordChange=now;
-    localStorage.setItem(AUTH_SESSION_KEY,JSON.stringify(_currentUser));
-    _syncUserCatalog();
-    return null;
+    try{
+        var resp=await fetch(PROXY_ORIGIN+'/auth/update-password',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},_authHeaders()),body:JSON.stringify({currentPassword:oldPw,newPassword:newPw})});
+        var d=await resp.json();
+        if(!resp.ok||!d||!d.ok)return(d&&d.error)||'Error al cambiar la contraseña';
+        _currentUser.lastPasswordChange=d.lastPasswordChange;
+        localStorage.setItem(AUTH_SESSION_KEY,JSON.stringify(_currentUser));
+        _syncUserCatalog();
+        return null;
+    }catch(e){return 'Error: '+e.message;}
 }
 
 async function _initAuth(){
@@ -3502,20 +3462,13 @@ async function _doDeleteAccount(){
     if(!pw){errEl.textContent='Ingresá tu contraseña para confirmar';return;}
     btn.disabled=true;btn.textContent='Verificando...';
     try{
-        _usersIndex=null;
-        var idx=await _loadUsersIndex();
         var uname=_currentUser.username;
-        var userData=idx.users&&idx.users[uname];
-        if(!userData){errEl.textContent='Error: usuario no encontrado';btn.disabled=false;btn.textContent='Eliminar mi cuenta permanentemente';return;}
-        var hash=await _hashPw(pw,userData.salt);
-        if(hash!==userData.hash){errEl.textContent='Contraseña incorrecta';btn.disabled=false;btn.textContent='Eliminar mi cuenta permanentemente';return;}
         if(uname===ADMIN_USERNAME){errEl.textContent='La cuenta de administrador no se puede eliminar';btn.disabled=false;btn.textContent='Eliminar mi cuenta permanentemente';return;}
+        var resp=await fetch(PROXY_ORIGIN+'/auth/delete-account',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},_authHeaders()),body:JSON.stringify({password:pw})});
+        var d=await resp.json();
+        if(!resp.ok||!d||!d.ok){errEl.textContent=(d&&d.error)||'Error al eliminar la cuenta';btn.disabled=false;btn.textContent='Eliminar mi cuenta permanentemente';return;}
         btn.textContent='Eliminando cuenta...';
-        try{await fetch(PROXY_ORIGIN+'/kv/delete?key='+encodeURIComponent('lib_'+uname));}catch(e){}
-        try{await fetch(PROXY_ORIGIN+'/kv/delete?key='+encodeURIComponent('profile_'+uname));}catch(e){}
         if(CATALOG_API){try{await fetch(CATALOG_API+'/'+encodeURIComponent(uname),{method:'DELETE',credentials:'same-origin'});}catch(e){}}
-        delete idx.users[uname];
-        await _saveUsersIndex();
         _currentUser=null;_userProfile=null;_userProfileExists=false;
         games=[];
         localStorage.removeItem(AUTH_SESSION_KEY);
@@ -4061,6 +4014,7 @@ async function renderGestionSagas(){
     box.innerHTML=h;
 }
 var VERSION_HISTORY=[
+    {v:'1.8',d:'Vulnerabilidad de seguridad del backend corregida',items:['Login y registro ahora se verifican 100% en el servidor: la contraseña y su hash nunca salen del Worker','Sesión con token: cada acción que escribe datos requiere un token de sesión válido emitido por el servidor','Los endpoints /kv/get, /kv/set y /kv/delete ya no aceptan escrituras sin autenticación; cada usuario solo puede modificar su propia biblioteca/perfil/presencia (o un admin)','La lista de usuarios (_users_index) nunca vuelve a incluir hash ni salt de contraseñas al leerla desde el cliente','Cambio de nombre de usuario, cambio de contraseña y borrado de cuenta migrados a endpoints protegidos del Worker','Se dejó de enviar el hash/salt de la contraseña al servicio externo de catálogo en cada sincronización']},
     {v:'1.0',d:'Migración inicial',items:['Migración completa desde Vento a hosting independiente (GitHub Pages)','Reemplazo del backend privado de Vento por almacenamiento local y luego Cloudflare Workers','Login/registro con contraseñas encriptadas, con respaldo para navegadores sin soporte de encriptación']},
     {v:'1.1',d:'Búsqueda y catálogo',items:['Integración real con RAWG e IGDB a través de un proxy propio (Cloudflare Worker) para evitar bloqueos de CORS','Arreglo de "Buscar", "Explorar" (plataformas, géneros, modos) y recomendaciones, que no traían resultados','Sección "Populares ahora" basada en tendencias/popularidad real','Buscador unificado: biblioteca propia y catálogo externo en un solo lugar']},
     {v:'1.2',d:'Cuentas compartidas',items:['Cuentas, bibliotecas y perfiles pasaron a guardarse en una base de datos compartida (Cloudflare KV), accesible para todos los usuarios reales de la web','Sistema de presencia (usuarios "online")','Panel de administrador con estadísticas: usuarios registrados, online, biblioteca de cada uno agrupada por estado y consola, buscador de usuarios']},
@@ -5453,6 +5407,7 @@ async function viewGameSaga(name){
 function addSagaGame(idx){
     var g=window._sagaResults&&window._sagaResults[idx];if(!g)return;
     var ov=document.getElementById('sagaViewOverlay');if(ov)ov.remove();
+    var pv=document.getElementById('gamePreviewOverlay');if(pv)pv.remove();
     var plats=(g.platforms||[]).map(function(p){return p.name;}).filter(Boolean).join(', ');
     var cover=g.cover&&g.cover.image_id?'https://images.igdb.com/igdb/image/upload/t_1080p/'+g.cover.image_id+'.jpg':'';
     filterPlatforms(plats);
