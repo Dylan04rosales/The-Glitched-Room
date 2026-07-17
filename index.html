@@ -1737,7 +1737,6 @@ if(url){g.coverUrl=url;g.coverCustom=true;save();showToast('Portada subida','suc
 if(_fromGestion){_fromGestion=false;closeDatosSheet();renderGestion();}else{openDatosSheet(datosGameId);}}
 else{showToast('Error al subir la portada','error');}
 }
-var _proxyCache={};
 var IGDB_MODE_MAP={singleplayer:1,splitscreen:4,coop:3,'multiplayer-online':2,mmo:5};
 function _igdbTimestampToYear(ts){return ts?new Date(ts*1000).getFullYear():0;}
 function _igdbToCard(g){
@@ -1890,55 +1889,12 @@ async function _igdbPostReal(action,params,_retry){
         return fb3;
     }
 }
-function _proxyPost(action,params){
-if(!PROXY_BASE)return Promise.resolve(null);
-var ck=action+'|'+JSON.stringify(params);
-if(_proxyCache[ck]!==undefined)return Promise.resolve(_proxyCache[ck]);
-var ctrl=new AbortController();var tid=setTimeout(function(){ctrl.abort();},30000);
-return fetch(PROXY_BASE+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(params),credentials:'same-origin',signal:ctrl.signal}).then(function(r){clearTimeout(tid);if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(function(d){_proxyCache[ck]=d;return d;}).catch(function(e){clearTimeout(tid);_proxyCache[ck]=null;return null;});
-}
-async function proxyTGDB(gameName,platform){
-var clean=cleanSearchName(gameName);
-var queries=[_proxyPost("tgdb",{gameName:clean,platform:platform||undefined})];
-if(clean!==gameName)queries.push(_proxyPost("tgdb",{gameName:gameName,platform:platform||undefined}));
-var results=await Promise.all(queries);
-for(var i=0;i<results.length;i++){if(results[i]&&results[i].covers&&results[i].covers.length)return results[i].covers[0].url;}
-return null;
-}
 function cleanSearchName(q){return q.replace(/\s*\([\d]{4}\)\s*/g,'').replace(/\s*\[.*?\]\s*/g,'').trim();}
-async function proxyTGDBCovers(gameName,platform,lim){
-if(!PROXY_BASE)return[];
-var seen=new Set();var res=[];
-var queries=[gameName];var c=cleanSearchName(gameName);if(c&&c!==gameName)queries.push(c);
-var _ym=gameName.match(/\((\d{4})\)/);if(_ym){var _wyr=c+' '+_ym[1];if(queries.indexOf(_wyr)<0)queries.push(_wyr);}
-for(var qi=0;qi<queries.length&&res.length<lim;qi++){
-try{
-var d=await _proxyPost("tgdb",{gameName:queries[qi],platform:platform||undefined});
-if(d&&d.covers)for(var ci=0;ci<d.covers.length&&res.length<lim;ci++){if(!seen.has(d.covers[ci].url)){seen.add(d.covers[ci].url);res.push({url:d.covers[ci].url,thumb:d.covers[ci].url,w:0,h:0,src:"tgdb",name:d.covers[ci].name||queries[qi]});}}
-}catch(e){}}
-return res;
-}
-async function proxySGDB(gameName,platform){
-var d=await _proxyPost("sgdb",{gameName:gameName,platform:platform||undefined});
-return d&&d.covers&&d.covers.length?d.covers[0].url:null;
-}
-async function proxySGDBCovers(gameName,platform,lim){
-if(!PROXY_BASE)return[];
-var seen=new Set();var res=[];
-var queries=[gameName];var c=cleanSearchName(gameName);if(c&&c!==gameName)queries.push(c);
-var _ym=gameName.match(/\((\d{4})\)/);if(_ym){var _wyr=c+' '+_ym[1];if(queries.indexOf(_wyr)<0)queries.push(_wyr);}
-for(var qi=0;qi<queries.length&&res.length<lim;qi++){
-try{
-var d=await _proxyPost("sgdb",{gameName:queries[qi],platform:platform||undefined});
-if(d&&d.covers)for(var ci=0;ci<d.covers.length&&res.length<lim;ci++){if(!seen.has(d.covers[ci].url)){seen.add(d.covers[ci].url);res.push({url:d.covers[ci].url,thumb:d.covers[ci].thumb||d.covers[ci].url,w:0,h:0,src:"sgdb",name:d.covers[ci].name||queries[qi]});}}
-}catch(e){}}
-return res;
-}
 var _coverCache={};var _coverRunning=false;var _coverQueued=false;
 async function upgradeCatalogCovers(){
     if(_coverRunning){_coverQueued=true;return;}
     _coverRunning=true;_coverQueued=false;
-    var hasApi=gk("igdb_id")||gk("tgdb")||gk("sgdb");
+    var hasApi=true;
     if(!hasApi){_coverRunning=false;return;}
     var imgs=document.querySelectorAll("img[data-covname]");
     var todo=[];
@@ -1950,8 +1906,9 @@ async function upgradeCatalogCovers(){
     }
     function _fetchOne(nm){
         return Promise.any([
-            proxyTGDB(nm).then(function(c){if(c)return c;throw 0;}),
-            proxySGDB(nm).then(function(c){if(c)return c;throw 0;}),
+            fetchSteamCover(nm).then(function(c){if(c)return c;throw 0;}),
+            fetchTGDBCover(nm).then(function(c){if(c)return c;throw 0;}),
+            fetchSGDBCover(nm).then(function(c){if(c)return c;throw 0;}),
             fetchIGDBCover(nm).then(function(c){if(c)return c;throw 0;})
         ]).catch(function(){return null;});
     }
@@ -2240,65 +2197,25 @@ function renderExploreModeResults(el,results,tag){
 }
 
 function renderExploreStores(el){
-    var stores=[
-        {key:'playstation',label:'PlayStation Store',icon:'🎮',color:'#003087',action:'playstation'},
-        {key:'xbox',label:'Xbox Store',icon:'🟢',color:'#107c10',action:'xbox'},
-        {key:'nintendo',label:'Nintendo eShop',icon:'🔴',color:'#e60012',action:'nintendo'},
-        {key:'steam',label:'Steam',icon:'🖥️',color:'#1b2838',action:'steam'}
-    ];
-    var h='<div style="padding:0.75rem 1rem;font-size:0.72rem;color:var(--text3)">Buscar juegos directamente en las tiendas oficiales</div>';
+    var h='<div style="padding:0.75rem 1rem;font-size:0.72rem;color:var(--text3)">Buscar portadas oficiales directamente en Steam</div>';
     h+='<div class="search-bar" style="padding:0 1rem 0.5rem"><input type="text" id="storeSearchInput" placeholder="Nombre del juego..." onkeydown="if(event.key===\'Enter\'){event.preventDefault();searchStores()}"><button onclick="searchStores()" id="storeSearchBtn">Buscar</button></div>';
-    h+='<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:0.5rem 1rem">';
-    for(var i=0;i<stores.length;i++){
-        var s=stores[i];
-        h+='<button onclick="searchSingleStore(\''+s.action+'\',\''+s.label+'\')" style="padding:0.75rem;border-radius:14px;border:1px solid '+s.color+'44;background:'+s.color+'11;color:var(--text);font-size:0.82rem;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all 0.15s"><span style="font-size:1.1rem">'+s.icon+'</span> '+escHtml(s.label)+'</button>';
-    }
-    h+='</div><div id="storeResults"></div>';
+    h+='<div style="padding:0 1rem 0.5rem;font-size:0.68rem;color:var(--text3);opacity:0.75">PlayStation Store, Xbox Store y Nintendo eShop no tienen una API pública disponible para buscar portadas, así que por ahora solo se puede buscar en Steam.</div>';
+    h+='<div id="storeResults"></div>';
     el.innerHTML=h;
 }
-
 async function searchStores(){
     var inp=document.getElementById('storeSearchInput');
     if(!inp)return;var q=inp.value.trim();if(!q)return;
     var el=document.getElementById('storeResults');if(!el)return;
     var btn=document.getElementById('storeSearchBtn');
     btn.disabled=true;btn.textContent='...';
-    el.innerHTML='<div style="padding:2rem;text-align:center;color:var(--text3);font-size:0.82rem"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 0.5rem"></div>Buscando en tiendas...</div>';
-    var allResults=[];
-    var sources=['playstation','xbox','nintendo','steam'];
-    var labels={'playstation':'PS Store','xbox':'Xbox','nintendo':'Nintendo','steam':'Steam'};
-    for(var i=0;i<sources.length;i++){
-        try{
-            var d=await _proxyPost(sources[i],{gameName:q});
-            if(d&&d.covers){
-                for(var j=0;j<d.covers.length;j++){
-                    var c=d.covers[j];
-                    allResults.push({name:c.name||q,cover:c.url||c.thumb||'',platforms:c.platform||labels[sources[i]],year:'',metacritic:0,source:labels[sources[i]]});
-                }
-            }
-        }catch(e){}
-    }
-    renderStoreResults(el,allResults,q);
-    btn.disabled=false;btn.textContent='Buscar';
-}
-
-async function searchSingleStore(action,label){
-    var inp=document.getElementById('storeSearchInput');
-    var q=inp?inp.value.trim():'';
-    if(!q){showToast('Escribí el nombre del juego primero','info');inp.focus();return;}
-    var el=document.getElementById('storeResults');if(!el)return;
-    el.innerHTML='<div style="padding:2rem;text-align:center;color:var(--text3);font-size:0.82rem"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 0.5rem"></div>Buscando en '+escHtml(label)+'...</div>';
+    el.innerHTML='<div style="padding:2rem;text-align:center;color:var(--text3);font-size:0.82rem"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 0.5rem"></div>Buscando en Steam...</div>';
     try{
-        var d=await _proxyPost(action,{gameName:q});
-        var results=[];
-        if(d&&d.covers){
-            for(var j=0;j<d.covers.length;j++){
-                var c=d.covers[j];
-                results.push({name:c.name||q,cover:c.url||c.thumb||'',platforms:c.platform||label,year:'',metacritic:0,source:label});
-            }
-        }
+        var covers=await fetchSteamCovers(q,12);
+        var results=covers.map(function(c){return{name:c.name||q,cover:c.url,platforms:'PC (Steam)',year:'',metacritic:0,source:'Steam'};});
         renderStoreResults(el,results,q);
     }catch(e){el.innerHTML='<div style="padding:1rem;text-align:center;color:var(--red);font-size:0.82rem">Error: '+escHtml(e.message)+'</div>';}
+    btn.disabled=false;btn.textContent='Buscar';
 }
 
 function renderStoreResults(el,results,q){
@@ -2768,7 +2685,6 @@ function _detectSagas(){
 var _sagaLoading=false;
 async function loadSagaRecommendations(){
     var el=document.getElementById('inicioScroll');if(!el)return;
-    if(!PROXY_BASE)return;
     if(_sagaCache&&Date.now()-_sagaCacheTime<SAGA_TTL){_renderSagasInicio(_sagaCache);return;}
     if(_sagaLoading)return;_sagaLoading=true;
     var sagas=_detectSagas();
@@ -2927,7 +2843,7 @@ function _checkLocalCover(gameId){
         img.src=url;
     });
 }
-var _libCoverRunning=false;async function autoFetchLibCovers(){if(_libCoverRunning)return;_libCoverRunning=true;try{var missing=games.filter(function(g){return g.name&&g.platform&&!g.coverUrl;});if(!missing.length){_libCoverRunning=false;return;}var changed=0;for(var b=0;b<missing.length;b+=3){var chunk=missing.slice(b,b+3);var localChecks=await Promise.all(chunk.map(function(g){return _checkLocalCover(g.id);}));for(var lc=0;lc<chunk.length;lc++){if(localChecks[lc]){chunk[lc].coverUrl=localChecks[lc];changed++;}}var needApi=chunk.filter(function(g){return !g.coverUrl;});if(needApi.length){var hasApi=PROXY_BASE||gk("tgdb")||gk("igdb_id")||gk("sgdb");if(hasApi){var results=await Promise.all(needApi.map(function(g){return fetchPlatformCover(g.rawgId||null,g.platform,g.name).catch(function(){return null;});}));for(var j=0;j<needApi.length;j++){if(results[j]){needApi[j].coverUrl=results[j];changed++;uploadCoverToServer(results[j],needApi[j].id).then(function(cj){return function(local){if(local){cj.coverUrl=local;_localCoverCache[cj.id]=true;save();}};}(needApi[j])).catch(function(){})}}}}}if(changed>0){save();renderPerfilGrid();}}catch(e){console.warn('autoFetchLibCovers error:',e);}finally{_libCoverRunning=false;}}
+var _libCoverRunning=false;async function autoFetchLibCovers(){if(_libCoverRunning)return;_libCoverRunning=true;try{var missing=games.filter(function(g){return g.name&&g.platform&&!g.coverUrl;});if(!missing.length){_libCoverRunning=false;return;}var changed=0;for(var b=0;b<missing.length;b+=3){var chunk=missing.slice(b,b+3);var localChecks=await Promise.all(chunk.map(function(g){return _checkLocalCover(g.id);}));for(var lc=0;lc<chunk.length;lc++){if(localChecks[lc]){chunk[lc].coverUrl=localChecks[lc];changed++;}}var needApi=chunk.filter(function(g){return !g.coverUrl;});if(needApi.length){var hasApi=true;if(hasApi){var results=await Promise.all(needApi.map(function(g){return fetchPlatformCover(g.rawgId||null,g.platform,g.name).catch(function(){return null;});}));for(var j=0;j<needApi.length;j++){if(results[j]){needApi[j].coverUrl=results[j];changed++;uploadCoverToServer(results[j],needApi[j].id).then(function(cj){return function(local){if(local){cj.coverUrl=local;_localCoverCache[cj.id]=true;save();}};}(needApi[j])).catch(function(){})}}}}}if(changed>0){save();renderPerfilGrid();}}catch(e){console.warn('autoFetchLibCovers error:',e);}finally{_libCoverRunning=false;}}
 function togglePlatFilter(p){if(platFilter.has(p))platFilter.delete(p);else platFilter.add(p);renderPerfilGrid();}
 function _gamePlatSet(g){return(g.platform||'').split(',').map(function(s){return s.trim()}).filter(Boolean);}
 function _gameAllPlats(g){var own=_gamePlatSet(g);var seen=new Set(own);var name=(g.name||'').toLowerCase();for(var i=0;i<games.length;i++){if(games[i].id!==g.id&&(games[i].name||'').toLowerCase()===name){var ps=_gamePlatSet(games[i]);for(var j=0;j<ps.length;j++)if(!seen.has(ps[j])){seen.add(ps[j]);own.push(ps[j]);}}}return own;}
@@ -3070,11 +2986,6 @@ function _renderRatingsView(el,list,header){
 }
 
 var _autoScoreRunning=false;
-function _proxyFast(action,params){
-    if(!PROXY_BASE)return Promise.resolve(null);
-    var ctrl=new AbortController();var tid=setTimeout(function(){ctrl.abort();},8000);
-    return fetch(PROXY_BASE+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(params),credentials:'same-origin',signal:ctrl.signal}).then(function(r){clearTimeout(tid);if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).catch(function(e){clearTimeout(tid);return null;});
-}
 async function _fetchOpenCriticScore(name){
     try{
         var sr=await fetch(PROXY_ORIGIN+'/opencritic/search?criteria='+encodeURIComponent(name));
@@ -3824,7 +3735,7 @@ async function resyncAllGames(){
                     if(d.background_image){g.coverUrl=d.background_image;covers++;}
                 }
             }catch(e){}
-            try{var _sc=await proxySteamCover(g.name);if(_sc){g.coverUrl=_sc;}}catch(e){}
+            try{var _sc=await fetchSteamCover(g.name);if(_sc){g.coverUrl=_sc;}}catch(e){}
             await new Promise(function(r){setTimeout(r,250);});
             try{
                 var saga=await detectSaga(g.rawgId,g.name);
@@ -4095,6 +4006,7 @@ async function _loadTopSearchedGameCard(name){
     }catch(e){box.innerHTML='';}
 }
 var VERSION_HISTORY=[
+    {v:'2.0',d:'Portadas oficiales de Steam y limpieza de código muerto',items:['Portadas de Steam ahora funcionan de verdad (antes dependían de un backend de Vento que ya no existe): se agregó una ruta nueva en el Worker que busca el appid del juego y arma la portada oficial vertical de Steam','El picker de portadas ("Elegir portada") ahora también busca en IGDB y Wikipedia además de TGDB/SGDB/RAWG/Steam, priorizando siempre las fuentes oficiales','Se sacó código muerto que simulaba portadas de PlayStation, Xbox, Nintendo, OpenCritic y CheapShark (nunca funcionaban, dependían de un backend viejo que ya no existe)','"Explorar → Tiendas" ahora deja en claro que solo Steam tiene una API pública disponible; el buscador de esa sección ya funciona con portadas reales','Se arregló un bug real: la sección "Completa tus sagas" de Inicio nunca se mostraba por un chequeo viejo que quedó pegado del código muerto','Autocompletado de portada al agregar un juego, portadas masivas y portadas automáticas de biblioteca ahora usan Steam + TGDB + SGDB + IGDB de verdad']},
     {v:'1.9',d:'Estadísticas en Sagas buscadas',items:['🎮 Sagas buscadas ahora muestra un ranking de las sagas más buscadas','Debajo del ranking, ficha con descripción e imagen del juego individual más buscado (vía IGDB)','Ranking de los juegos más buscados','Ranking de los juegos más agregados a la biblioteca, contando en cuántos usuarios distintos aparece cada uno','Se mantiene el historial detallado de búsquedas de saga debajo de los rankings']},
     {v:'1.8',d:'Vulnerabilidad de seguridad del backend corregida',items:['Login y registro ahora se verifican 100% en el servidor: la contraseña y su hash nunca salen del Worker','Sesión con token: cada acción que escribe datos requiere un token de sesión válido emitido por el servidor','Los endpoints /kv/get, /kv/set y /kv/delete ya no aceptan escrituras sin autenticación; cada usuario solo puede modificar su propia biblioteca/perfil/presencia (o un admin)','La lista de usuarios (_users_index) nunca vuelve a incluir hash ni salt de contraseñas al leerla desde el cliente','Cambio de nombre de usuario, cambio de contraseña y borrado de cuenta migrados a endpoints protegidos del Worker','Se dejó de enviar el hash/salt de la contraseña al servicio externo de catálogo en cada sincronización']},
     {v:'1.0',d:'Migración inicial',items:['Migración completa desde Vento a hosting independiente (GitHub Pages)','Reemplazo del backend privado de Vento por almacenamiento local y luego Cloudflare Workers','Login/registro con contraseñas encriptadas, con respaldo para navegadores sin soporte de encriptación']},
@@ -4674,23 +4586,37 @@ function _steamNameMatch(query,result){
     var matched=qWords.filter(function(w){return w.length>2&&rWords.indexOf(w)>=0;}).length;
     return matched>=Math.ceil(qWords.length*0.7);
 }
-async function proxySteamCover(gameName){
-    if(!PROXY_BASE||!gameName)return null;
-    try{
-        var clean=cleanSearchName(gameName);
-        var qs=[clean];if(clean!==gameName)qs.unshift(gameName);
-        var results=await Promise.all(qs.map(function(q){return _proxyPost("steam",{gameName:q});}));
-        for(var qi=0;qi<results.length;qi++){var d=results[qi];
-            if(d&&d.covers&&d.covers.length){for(var i=0;i<d.covers.length;i++){if(_steamNameMatch(gameName,d.covers[i].name))return d.covers[i].url;}}}
-    }catch(e){}
-    return null;
+async function fetchSteamCovers(gameName,lim){
+    if(!gameName)return[];
+    var res=[];var seen=new Set();
+    var queries=[gameName];var c=cleanSearchName(gameName);if(c&&c!==gameName)queries.push(c);
+    for(var qi=0;qi<queries.length&&res.length<lim;qi++){
+        try{
+            var r=await fetch(PROXY_ORIGIN+'/steam/search?term='+encodeURIComponent(queries[qi]));
+            if(!r.ok)continue;
+            var d=await r.json();
+            var items=(d&&d.items)||[];
+            for(var i=0;i<items.length&&res.length<lim;i++){
+                var it=items[i];
+                if(!_steamNameMatch(gameName,it.name))continue;
+                var url='https://cdn.cloudflare.steamstatic.com/steam/apps/'+it.appid+'/library_600x900.jpg';
+                if(seen.has(url))continue;seen.add(url);
+                res.push({url:url,thumb:url,w:600,h:900,src:'steam',name:it.name});
+            }
+        }catch(e){}
+    }
+    return res;
+}
+async function fetchSteamCover(gameName){
+    var c=await fetchSteamCovers(gameName,1);
+    return c.length?c[0].url:null;
 }
 async function fetchPlatformCover(rawgId, platform, gameName){
     if(!gameName)return null;
     var sources=[
-        proxySteamCover(gameName).catch(function(){return null;}),
-        proxyTGDB(gameName,platform).catch(function(){return null;}),
-        proxySGDB(gameName,platform).catch(function(){return null;}),
+        fetchSteamCover(gameName).catch(function(){return null;}),
+        fetchTGDBCover(gameName,platform).catch(function(){return null;}),
+        fetchSGDBCover(gameName,platform).catch(function(){return null;}),
         fetchIGDBCover(gameName,platform).catch(function(){return null;})
     ];
     var results=await Promise.all(sources);
@@ -4698,53 +4624,6 @@ async function fetchPlatformCover(rawgId, platform, gameName){
     return null;
 }
 
-async function proxySteamCovers(gameName,lim){
-    if(!PROXY_BASE)return[];
-    var seen=new Set();var res=[];
-    var queries=[gameName];var c=cleanSearchName(gameName);if(c&&c!==gameName)queries.push(c);
-    var ym=gameName.match(/\((\d{4})\)/);if(ym){var wyr=c+' '+ym[1];if(queries.indexOf(wyr)<0)queries.push(wyr);}
-    for(var qi=0;qi<queries.length&&res.length<lim;qi++){
-        try{
-            var d=await _proxyPost("steam",{gameName:queries[qi]});
-            if(d&&d.covers)for(var ci=0;ci<d.covers.length&&res.length<lim;ci++){
-                if(!seen.has(d.covers[ci].url)){seen.add(d.covers[ci].url);res.push({url:d.covers[ci].url,thumb:d.covers[ci].thumb||d.covers[ci].url,w:600,h:900,src:'steam',name:d.covers[ci].name||queries[qi]});}
-            }
-        }catch(e){}
-    }
-    return res;
-}
-async function proxyOCCovers(gameName,lim){
-    if(!PROXY_BASE)return[];
-    try{
-        var d=await _proxyPost("oc_covers",{gameName:gameName});
-        if(d&&d.covers)return d.covers.slice(0,lim).map(function(c){return{url:c.url,thumb:c.thumb||c.url,w:0,h:0,src:'opencritic',name:c.name||gameName};});
-    }catch(e){}
-    return[];
-}
-async function proxyPlaystationCovers(gameName,lim){
-    if(!PROXY_BASE)return[];
-    try{
-        var d=await _proxyPost("playstation",{gameName:gameName});
-        if(d&&d.covers)return d.covers.slice(0,lim).map(function(c){return{url:c.url,thumb:c.thumb||c.url,w:0,h:0,src:'playstation',name:c.name||gameName};});
-    }catch(e){}
-    return[];
-}
-async function proxyXboxCovers(gameName,lim){
-    if(!PROXY_BASE)return[];
-    try{
-        var d=await _proxyPost("xbox",{gameName:gameName});
-        if(d&&d.covers)return d.covers.slice(0,lim).map(function(c){return{url:c.url,thumb:c.thumb||c.url,w:0,h:0,src:'xbox',name:c.name||gameName};});
-    }catch(e){}
-    return[];
-}
-async function proxyNintendoCovers(gameName,lim){
-    if(!PROXY_BASE)return[];
-    try{
-        var d=await _proxyPost("nintendo",{gameName:gameName});
-        if(d&&d.covers)return d.covers.slice(0,lim).map(function(c){return{url:c.url,thumb:c.thumb||c.url,w:0,h:0,src:'nintendo',name:c.name||gameName};});
-    }catch(e){}
-    return[];
-}
 async function fetchWikiCovers(gameName,lim){
     var res=[];
     var searchTerms=[gameName+' video game'];
@@ -4774,15 +4653,6 @@ async function fetchWikiCovers(gameName,lim){
     }catch(e){}
     return res;
 }
-async function proxyCheapSharkCovers(gameName,lim){
-    if(!PROXY_BASE)return[];
-    try{
-        var c=cleanSearchName(gameName);
-        var d=await _proxyPost("cheapshark",{gameName:c});
-        if(d&&d.covers)return d.covers.slice(0,lim).map(function(cv){return{url:cv.url,thumb:cv.thumb||cv.url,w:600,h:900,src:'cheapshark',name:cv.name||gameName};});
-    }catch(e){}
-    return[];
-}
 async function tryPlatformCover(rawgId, platform, fallback){
     const coverField=document.getElementById('fCover');
     if(!coverField)return;
@@ -4794,7 +4664,7 @@ async function tryPlatformCover(rawgId, platform, fallback){
     else if(fallback){coverField.value=fallback;}
 }
 async function bulkRefreshCovers(){if(!_isAdmin()){showToast('Solo el administrador','error');return;}
-    var hasKey=PROXY_BASE||gk("sgdb")||gk("tgdb")||gk("igdb_id");
+    var hasKey=true;
     if(!hasKey){showToast("Configura al menos una API de portadas en Ajustes","info");return;}
     var toUpdate=games.filter(function(g){return g.name&&g.platform&&!g.coverCustom;});
     var skipped=games.filter(function(g){return g.coverCustom;}).length;
@@ -5037,6 +4907,9 @@ async function loadCoverPicker(){
     var _r=await Promise.all([
         fetchTGDBCovers(query,g.platform,8).then(function(c){_dbg.push('TGDB:'+c.length);return c;}).catch(function(){_dbg.push('TGDB:err');return[];}),
         fetchSGDBCovers(query,g.platform,8).then(function(c){_dbg.push('SGDB:'+c.length);return c;}).catch(function(){_dbg.push('SGDB:err');return[];}),
+        fetchIGDBCovers(query,g.platform,8).then(function(c){_dbg.push('IGDB:'+c.length);return c;}).catch(function(){_dbg.push('IGDB:err');return[];}),
+        fetchSteamCovers(query,8).then(function(c){_dbg.push('Steam:'+c.length);return c;}).catch(function(){_dbg.push('Steam:err');return[];}),
+        fetchWikiCovers(query,4).then(function(c){_dbg.push('Wiki:'+c.length);return c;}).catch(function(){_dbg.push('Wiki:err');return[];}),
         (async function(){try{var key=gk('rawg');if(!key)return[];var r=await fetch(RAWG_PROXY_BASE+'/games?key='+encodeURIComponent(key)+'&search='+encodeURIComponent(query)+'&page_size=5');if(!r.ok)return[];var d=await r.json();var out=(d.results||[]).filter(function(x){return x.background_image;}).map(function(x){return{url:x.background_image,thumb:x.background_image,w:0,h:0,src:'rawg',name:x.name||query};});_dbg.push('RAWG:'+out.length);return out;}catch(e){_dbg.push('RAWG:err');return[];}})()
     ]);
     function _coverScore(query,name){
@@ -5050,10 +4923,10 @@ async function loadCoverPicker(){
         if(n.indexOf(q)>=0||q.indexOf(n)>=0)return 50;
         return 10;
     }
-    var seen=new Set();var bySrc={igdb:[],tgdb:[],sgdb:[],steam:[],playstation:[],xbox:[],nintendo:[],opencritic:[],wiki:[],cheapshark:[],rawg:[]};
+    var seen=new Set();var bySrc={igdb:[],tgdb:[],sgdb:[],steam:[],wiki:[],rawg:[]};
     for(var ri=0;ri<_r.length;ri++){if(!_r[ri]||!Array.isArray(_r[ri]))continue;for(var ci=0;ci<_r[ri].length;ci++){var c=_r[ri][ci];if(c&&c.url&&!seen.has(c.url)){seen.add(c.url);c._score=_coverScore(query,c.name);var sk=c.src||'other';if(!bySrc[sk])bySrc[sk]=[];bySrc[sk].push(c);}}}
     for(var sk in bySrc){bySrc[sk].sort(function(a,b){return b._score-a._score;});}
-    var _srcBuildOrder=["steam","playstation","xbox","nintendo","igdb","tgdb","sgdb","opencritic","cheapshark","wiki","rawg"];
+    var _srcBuildOrder=["steam","igdb","tgdb","sgdb","wiki","rawg"];
     var covers=[];for(var _bi=0;_bi<_srcBuildOrder.length;_bi++){if(bySrc[_srcBuildOrder[_bi]])covers=covers.concat(bySrc[_srcBuildOrder[_bi]]);}
     if(!covers.length){
         if(area)area.innerHTML='<div style="text-align:center;padding:0.8rem;color:var(--text3);font-size:0.78rem">No se encontraron portadas para "'+escHtml(query)+'"<br><span style="font-size:0.6rem;color:var(--text3);opacity:0.6">'+escHtml(_dbg.join(' | '))+'</span></div>';
@@ -5214,7 +5087,7 @@ function _igdbQuickAdd(name,cover,plats,mc,year,cat){
     document.getElementById('fName').value=name;
     document.getElementById('fCover').value=cover||'';
     document.getElementById('fCategory').value=cat||'';
-    if(cover)proxySteamCover(name).then(function(sc){if(sc)document.getElementById('fCover').value=sc;});
+    if(cover)fetchSteamCover(name).then(function(sc){if(sc)document.getElementById('fCover').value=sc;});
     document.getElementById('fMC').value=mc||'';
     document.getElementById('fUser').value='';
     document.getElementById('fSaga').value='';
@@ -5229,18 +5102,16 @@ function _igdbQuickAdd(name,cover,plats,mc,year,cat){
     document.getElementById('fPlatformPicker').scrollIntoView({behavior:'smooth',block:'center'});
 }
 async function _searchFallback(q){
-    var steam=_proxyPost('steam',{gameName:q}).catch(function(){return null;});
-    var cheap=_proxyPost('cheapshark',{gameName:q}).catch(function(){return null;});
-    var all=await Promise.all([steam,cheap]);
-    var seen=new Set(),results=[];
-    for(var si=0;si<all.length;si++){
-        var src=all[si];if(!src||!src.covers)continue;
-        for(var ci=0;ci<src.covers.length;ci++){
-            var c=src.covers[ci];if(!c.name)continue;
+    var results=[];
+    try{
+        var covers=await fetchSteamCovers(q,10);
+        var seen=new Set();
+        for(var ci=0;ci<covers.length;ci++){
+            var c=covers[ci];if(!c.name)continue;
             var k=c.name.toLowerCase();if(seen.has(k))continue;seen.add(k);
             results.push({name:c.name,cover:c.url||c.thumb||'',platforms:'',year:'',metacritic:0,userRating:0,summary:'',genres:'',modes:[],category:0,categoryLabel:'Juego',id:0,_fallback:true});
         }
-    }
+    }catch(e){}
     return results;
 }
 var _trendingCache=null;
@@ -5496,7 +5367,7 @@ function addSagaGame(idx){
     document.getElementById('fName').value=g.name;
     document.getElementById('fCover').value=cover;
     document.getElementById('fSaga').value='';
-    proxySteamCover(g.name).then(function(sc){if(sc){document.getElementById('fCover').value=sc;lastRawgCover=sc;}});
+    fetchSteamCover(g.name).then(function(sc){if(sc){document.getElementById('fCover').value=sc;lastRawgCover=sc;}});
     var ryEl=document.getElementById('fReleaseYear');if(ryEl)ryEl.value=g.first_release_date?new Date(g.first_release_date*1000).getFullYear():0;
     document.getElementById('fPlatform').value='';
     lastRawgId=null;lastRawgCover=cover||null;
@@ -5518,7 +5389,7 @@ function selectRAWG(el){
     document.getElementById('fName').value=name;
     document.getElementById('fCover').value=cover||'';
     document.getElementById('fCategory').value=cat;
-    proxySteamCover(name).then(function(sc){if(sc){document.getElementById('fCover').value=sc;lastRawgCover=sc;}});
+    fetchSteamCover(name).then(function(sc){if(sc){document.getElementById('fCover').value=sc;lastRawgCover=sc;}});
     document.getElementById('fMC').value=mc||'';
     document.getElementById('fUser').value=userRating?String(Math.round(userRating/10*10)/10):'';
     document.getElementById('fSaga').value='';
@@ -5934,7 +5805,7 @@ function gdAddToLibrary(){
     lastRawgId=data.id;lastRawgCover=data.background_image||'';
     filterPlatforms(plats);document.getElementById('fName').value=data.name;
     if(data.background_image)document.getElementById('fCover').value=data.background_image;
-    proxySteamCover(data.name).then(function(sc){if(sc){document.getElementById('fCover').value=sc;lastRawgCover=sc;}});
+    fetchSteamCover(data.name).then(function(sc){if(sc){document.getElementById('fCover').value=sc;lastRawgCover=sc;}});
     if(data.metacritic)document.getElementById('fMC').value=data.metacritic;
     document.getElementById('fPlatform').value='';
     if(!document.getElementById('addModal').classList.contains('open'))openAddModalPrefilled();
