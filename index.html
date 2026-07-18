@@ -4052,6 +4052,7 @@ async function _loadTopSearchedGameCard(name){
     }catch(e){box.innerHTML='';}
 }
 var VERSION_HISTORY=[
+    {v:'2.6',d:'El sorteo de backlog ahora muestra el estado del juego',items:['Al tirar el dado ("¿Qué juego?" 🎲), ahora se muestra debajo de la portada en qué estado está el juego sorteado (Jugando, Terminado, Abandonado, Archivado o Lo tengo), con su color y emoji correspondiente','Si el juego está platinado, se muestra un badge extra "🏆 Platinado"','El botón "Marcar Jugando" ya no aparece si el juego sorteado ya está en Jugando']},
     {v:'2.5',d:'Bug arreglado: sorteo de backlog no veía la mayoría de la biblioteca',items:['El sorteo aleatorio ("¿Qué juego?" 🎲) solo consideraba juegos con el estado exacto "Lo tengo", ignorando Jugando/Terminado/Abandonado/Archivado; ahora toma cualquier juego que ya tengas (todo menos "Quiero"), igual que el resto de la app considera "poseído"']},
     {v:'2.4',d:'Notificaciones de amistad, caché de estadísticas y reseñas propias',items:['Notificación global de solicitudes de amistad: ahora aparece un badge en el ícono "Perfil" de la barra inferior desde cualquier pantalla, no solo entrando a Amigos','El ranking de "Juegos más agregados a la biblioteca" (en Gestión → Sagas buscadas) ahora usa caché de 10 minutos en vez de recorrer todos los usuarios cada vez que se abre el panel; se puede forzar una actualización manual con el link "Actualizar ranking"','Nuevo campo "Mi reseña" por juego: cualquier usuario puede escribir su propia reseña/comentario sobre un juego de su biblioteca, visible en la ficha de detalle del juego']},
     {v:'2.3',d:'IGDB pasa a ser el motor principal de búsqueda y catálogo',items:['Búsqueda, catálogo por plataforma, "Populares ahora", "Para ti", recomendaciones y géneros ahora consultan primero a IGDB en vez de RAWG','RAWG queda como respaldo automático y transparente solo si IGDB no responde o no tiene resultados para esa consulta','Esto reduce la dependencia de la cuota mensual de RAWG, que venía agotándose seguido']},
@@ -6019,15 +6020,20 @@ function openRandomBacklogPicker(){
     var pick=pool[Math.floor(Math.random()*pool.length)];
     var ov=document.getElementById('randomPickOverlay');
     var body=document.getElementById('randomPickBody');
+    var stColor=STATUS_COLORS[pick.status]||'var(--text3)';
+    var stEmoji=STATUS_EMOJI[pick.status]||'';
+    var statusBadge='<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:0.72rem;font-weight:700;background:'+stColor+'22;color:'+stColor+'">'+stEmoji+' '+escHtml(pick.status||'')+'</span>';
+    var platBadge=pick.platinum?' <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:0.72rem;font-weight:700;background:rgba(192,132,252,0.15);color:#c084fc">🏆 Platinado</span>':'';
     body.innerHTML='<div style="text-align:center;padding:0.5rem 0">'+
         '<div style="width:140px;height:187px;margin:0 auto 1rem;border-radius:var(--radius);overflow:hidden;background:var(--bg-elevated)">'+
         (pick.coverUrl?'<img src="'+escHtml(pick.coverUrl)+'" style="width:100%;height:100%;object-fit:cover" alt="">':'<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:1.8rem;font-weight:800;color:rgba(255,255,255,0.15)">'+escHtml(pick.name[0]||'?')+'</div>')+
         '</div>'+
         '<div style="font-size:1.1rem;font-weight:800;margin-bottom:0.3rem">'+escHtml(pick.name)+'</div>'+
-        '<div style="font-size:0.8rem;color:var(--text2);margin-bottom:1.2rem">'+escHtml(pick.platform||'')+'</div>'+
+        '<div style="font-size:0.8rem;color:var(--text2);margin-bottom:0.6rem">'+escHtml(pick.platform||'')+'</div>'+
+        '<div style="margin-bottom:1.2rem">'+statusBadge+platBadge+'</div>'+
         '<div style="display:flex;gap:8px">'+
         '<button onclick="openRandomBacklogPicker()" style="flex:1;padding:0.65rem;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;font-family:inherit;cursor:pointer;background:var(--bg-surface);color:var(--text2)">Tirar otro</button>'+
-        '<button onclick="_randomPickStart(\''+pick.id+'\')" style="flex:2;padding:0.65rem;border:none;border-radius:10px;font-size:0.85rem;font-weight:700;font-family:inherit;cursor:pointer;background:var(--accent);color:#000">Marcar Jugando</button>'+
+        (pick.status==='Jugando'?'':'<button onclick="_randomPickStart(\''+pick.id+'\')" style="flex:2;padding:0.65rem;border:none;border-radius:10px;font-size:0.85rem;font-weight:700;font-family:inherit;cursor:pointer;background:var(--accent);color:#000">Marcar Jugando</button>')+
         '</div></div>';
     ov.classList.add('open');
 }
