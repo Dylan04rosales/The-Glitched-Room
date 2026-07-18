@@ -4052,6 +4052,7 @@ async function _loadTopSearchedGameCard(name){
     }catch(e){box.innerHTML='';}
 }
 var VERSION_HISTORY=[
+    {v:'2.5',d:'Bug arreglado: sorteo de backlog no veía la mayoría de la biblioteca',items:['El sorteo aleatorio ("¿Qué juego?" 🎲) solo consideraba juegos con el estado exacto "Lo tengo", ignorando Jugando/Terminado/Abandonado/Archivado; ahora toma cualquier juego que ya tengas (todo menos "Quiero"), igual que el resto de la app considera "poseído"']},
     {v:'2.4',d:'Notificaciones de amistad, caché de estadísticas y reseñas propias',items:['Notificación global de solicitudes de amistad: ahora aparece un badge en el ícono "Perfil" de la barra inferior desde cualquier pantalla, no solo entrando a Amigos','El ranking de "Juegos más agregados a la biblioteca" (en Gestión → Sagas buscadas) ahora usa caché de 10 minutos en vez de recorrer todos los usuarios cada vez que se abre el panel; se puede forzar una actualización manual con el link "Actualizar ranking"','Nuevo campo "Mi reseña" por juego: cualquier usuario puede escribir su propia reseña/comentario sobre un juego de su biblioteca, visible en la ficha de detalle del juego']},
     {v:'2.3',d:'IGDB pasa a ser el motor principal de búsqueda y catálogo',items:['Búsqueda, catálogo por plataforma, "Populares ahora", "Para ti", recomendaciones y géneros ahora consultan primero a IGDB en vez de RAWG','RAWG queda como respaldo automático y transparente solo si IGDB no responde o no tiene resultados para esa consulta','Esto reduce la dependencia de la cuota mensual de RAWG, que venía agotándose seguido']},
     {v:'2.2',d:'Uploads a imgbb limitados a portadas oficiales o elegidas a mano',items:['Solo se sube a imgbb la portada que se auto-selecciona como "mejor portada oficial" al agregar un juego nuevo, y las que el admin elige a mano (subir foto, pegar URL, elegir del picker de portadas, fijar como personalizada, aprobar una corrección sugerida)','El refresco automático de portadas faltantes en segundo plano y "Actualizar portadas masivas" ahora usan la URL de la fuente directamente, sin subirla a imgbb, para no gastar cuota en portadas de menor confianza']},
@@ -6005,7 +6006,7 @@ async function steamImportRun(sid){
 
 // ===== SORTEO DE BACKLOG =====
 function openRandomBacklogPicker(){
-    var pool=games.filter(function(g){return g.status==='Lo tengo';});
+    var pool=games.filter(function(g){return g.status!=='Quiero';});
     var myConsoles=getMyConsoles();
     if(myConsoles.size){
         var filtered=pool.filter(function(g){
@@ -6014,7 +6015,7 @@ function openRandomBacklogPicker(){
         });
         if(filtered.length)pool=filtered;
     }
-    if(!pool.length){showToast('No tenés juegos en "Lo tengo" para sortear','info');return;}
+    if(!pool.length){showToast('No tenés juegos en tu biblioteca para sortear','info');return;}
     var pick=pool[Math.floor(Math.random()*pool.length)];
     var ov=document.getElementById('randomPickOverlay');
     var body=document.getElementById('randomPickBody');
