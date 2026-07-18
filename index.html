@@ -1370,6 +1370,20 @@ function _startPresence(){
 async function _updatePresence(){
     if(!_currentUser)return;
     try{await _dbSet('presence_'+_currentUser.username,{ts:Date.now(),display:_currentUser.id},true);}catch(e){}
+    try{
+        var reqs=await _dbGet('friend_requests_'+_currentUser.username)||[];
+        _updateFriendReqBadge(reqs.length);
+        _updateGlobalFriendBadge(reqs.length);
+    }catch(e){}
+}
+function _updateGlobalFriendBadge(n){
+    var btn=document.querySelector('.nav-btn[data-view="perfil"]');
+    if(!btn)return;
+    var badge=btn.querySelector('.friend-req-badge-nav');
+    if(n>0){
+        if(!badge){badge=document.createElement('span');badge.className='friend-req-badge-nav';badge.style.cssText='position:absolute;top:2px;right:calc(50% - 18px);min-width:15px;height:15px;padding:0 3px;border-radius:8px;background:var(--red);color:#fff;font-size:0.58rem;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1';btn.style.position='relative';btn.appendChild(badge);}
+        badge.textContent=n>9?'9+':n;
+    }else if(badge){badge.remove();}
 }
 var _adminRowsCache=null;
 async function openAdminStats(){
@@ -1703,7 +1717,19 @@ function _blobToDataURL(blob){
     });
 }
 async function _bucketUpload(fname,blob){
-    try{return await _blobToDataURL(blob);}catch(e){return null;}
+    try{
+        var dataUrl=await _blobToDataURL(blob);
+        var b64=dataUrl.split(',')[1];
+        var r=await fetch(PROXY_ORIGIN+'/imgbb/upload',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},_authHeaders()),body:JSON.stringify({image:b64,name:fname})});
+        if(r.ok){
+            var d=await r.json();
+            if(d&&d.ok&&d.url)return d.url;
+        }
+        return dataUrl;
+    }catch(e){
+        console.warn('_bucketUpload: fallo la subida a imgbb, usando portada local',e);
+        try{return await _blobToDataURL(blob);}catch(e2){return null;}
+    }
 }
 async function uploadCoverToServer(imageUrl,gameId){
     if(!imageUrl)return null;
@@ -1816,6 +1842,14 @@ async function _igdbPost(action,params,_retry){
     return result;
 }
 async function _igdbPostReal(action,params,_retry){
+    // Motor principal: IGDB (mejor cuota y cobertura). RAWG queda como respaldo si IGDB falla o no tiene resultados.
+    try{
+        var primary=await _igdbFallback(action,params);
+        if(primary&&primary.results&&primary.results.length){window._lastIgdbErr=null;return primary;}
+    }catch(eIgdb){}
+    return await _rawgSearchReal(action,params,_retry);
+}
+async function _rawgSearchReal(action,params,_retry){
     var key=gk('rawg');
     if(!key)return null;
     var ctrl=new AbortController();var tid=setTimeout(function(){ctrl.abort();},15000);
@@ -2843,7 +2877,7 @@ function _checkLocalCover(gameId){
         img.src=url;
     });
 }
-var _libCoverRunning=false;async function autoFetchLibCovers(){if(_libCoverRunning)return;_libCoverRunning=true;try{var missing=games.filter(function(g){return g.name&&g.platform&&!g.coverUrl;});if(!missing.length){_libCoverRunning=false;return;}var changed=0;for(var b=0;b<missing.length;b+=3){var chunk=missing.slice(b,b+3);var localChecks=await Promise.all(chunk.map(function(g){return _checkLocalCover(g.id);}));for(var lc=0;lc<chunk.length;lc++){if(localChecks[lc]){chunk[lc].coverUrl=localChecks[lc];changed++;}}var needApi=chunk.filter(function(g){return !g.coverUrl;});if(needApi.length){var hasApi=true;if(hasApi){var results=await Promise.all(needApi.map(function(g){return fetchPlatformCover(g.rawgId||null,g.platform,g.name).catch(function(){return null;});}));for(var j=0;j<needApi.length;j++){if(results[j]){needApi[j].coverUrl=results[j];changed++;uploadCoverToServer(results[j],needApi[j].id).then(function(cj){return function(local){if(local){cj.coverUrl=local;_localCoverCache[cj.id]=true;save();}};}(needApi[j])).catch(function(){})}}}}}if(changed>0){save();renderPerfilGrid();}}catch(e){console.warn('autoFetchLibCovers error:',e);}finally{_libCoverRunning=false;}}
+var _libCoverRunning=false;async function autoFetchLibCovers(){if(_libCoverRunning)return;_libCoverRunning=true;try{var missing=games.filter(function(g){return g.name&&g.platform&&!g.coverUrl;});if(!missing.length){_libCoverRunning=false;return;}var changed=0;for(var b=0;b<missing.length;b+=3){var chunk=missing.slice(b,b+3);var localChecks=await Promise.all(chunk.map(function(g){return _checkLocalCover(g.id);}));for(var lc=0;lc<chunk.length;lc++){if(localChecks[lc]){chunk[lc].coverUrl=localChecks[lc];changed++;}}var needApi=chunk.filter(function(g){return !g.coverUrl;});if(needApi.length){var results=await Promise.all(needApi.map(function(g){return fetchPlatformCover(g.rawgId||null,g.platform,g.name).catch(function(){return null;});}));for(var j=0;j<needApi.length;j++){if(results[j]){needApi[j].coverUrl=results[j];changed++;}}}}if(changed>0){save();renderPerfilGrid();}}catch(e){console.warn('autoFetchLibCovers error:',e);}finally{_libCoverRunning=false;}}
 function togglePlatFilter(p){if(platFilter.has(p))platFilter.delete(p);else platFilter.add(p);renderPerfilGrid();}
 function _gamePlatSet(g){return(g.platform||'').split(',').map(function(s){return s.trim()}).filter(Boolean);}
 function _gameAllPlats(g){var own=_gamePlatSet(g);var seen=new Set(own);var name=(g.name||'').toLowerCase();for(var i=0;i<games.length;i++){if(games[i].id!==g.id&&(games[i].name||'').toLowerCase()===name){var ps=_gamePlatSet(games[i]);for(var j=0;j<ps.length;j++)if(!seen.has(ps[j])){seen.add(ps[j]);own.push(ps[j]);}}}return own;}
@@ -3943,6 +3977,7 @@ async function renderGestionSagas(){
     if(topGame)h+='<div id="gestionTopGameBox" style="margin-bottom:1.25rem"></div>';
     h+=_rankBlock('🔍 Juegos más buscados','var(--accent)',gameRank.slice(0,10),'búsqueda','búsquedas');
     h+=_rankBlock('📚 Juegos más agregados a la biblioteca','var(--green)',addedRank.slice(0,10),'usuario','usuarios');
+    h+='<div style="text-align:right;margin:-1rem 0 1.25rem"><a id="mostAddedRefreshLink" onclick="_refreshMostAddedRanking()" style="font-size:0.68rem;color:var(--text3);text-decoration:underline;cursor:pointer">Actualizar ranking</a></div>';
     h+='<div style="font-size:0.72rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin:0 0 0.5rem">🕘 Historial detallado</div>';
     if(!log.length){h+='<div style="text-align:center;color:var(--text3);font-size:0.82rem;padding:1rem 0">Todavía no se buscó ninguna saga</div>';}
     else{
@@ -3959,7 +3994,10 @@ async function renderGestionSagas(){
     box.innerHTML=h;
     if(topGame)_loadTopSearchedGameCard(topGame.name);
 }
-async function _computeMostAddedGames(){
+var _mostAddedCache=null,_mostAddedCacheTime=0;
+var MOST_ADDED_TTL=10*60*1000;
+async function _computeMostAddedGames(force){
+    if(!force&&_mostAddedCache&&Date.now()-_mostAddedCacheTime<MOST_ADDED_TTL)return _mostAddedCache;
     try{
         var idx=await _dbGet('_users_index');
         var users=(idx&&idx.users)?Object.keys(idx.users):[];
@@ -3977,8 +4015,16 @@ async function _computeMostAddedGames(){
                 counts[key].count++;
             }
         }
-        return Object.keys(counts).map(function(k){return counts[k];}).sort(function(a,b){return b.count-a.count;});
-    }catch(e){return[];}
+        var result=Object.keys(counts).map(function(k){return counts[k];}).sort(function(a,b){return b.count-a.count;});
+        _mostAddedCache=result;_mostAddedCacheTime=Date.now();
+        return result;
+    }catch(e){return _mostAddedCache||[];}
+}
+async function _refreshMostAddedRanking(){
+    var link=document.getElementById('mostAddedRefreshLink');
+    if(link)link.textContent='Actualizando...';
+    await _computeMostAddedGames(true);
+    renderGestionSagas();
 }
 async function _loadTopSearchedGameCard(name){
     var box=document.getElementById('gestionTopGameBox');if(!box)return;
@@ -4006,6 +4052,10 @@ async function _loadTopSearchedGameCard(name){
     }catch(e){box.innerHTML='';}
 }
 var VERSION_HISTORY=[
+    {v:'2.4',d:'Notificaciones de amistad, caché de estadísticas y reseñas propias',items:['Notificación global de solicitudes de amistad: ahora aparece un badge en el ícono "Perfil" de la barra inferior desde cualquier pantalla, no solo entrando a Amigos','El ranking de "Juegos más agregados a la biblioteca" (en Gestión → Sagas buscadas) ahora usa caché de 10 minutos en vez de recorrer todos los usuarios cada vez que se abre el panel; se puede forzar una actualización manual con el link "Actualizar ranking"','Nuevo campo "Mi reseña" por juego: cualquier usuario puede escribir su propia reseña/comentario sobre un juego de su biblioteca, visible en la ficha de detalle del juego']},
+    {v:'2.3',d:'IGDB pasa a ser el motor principal de búsqueda y catálogo',items:['Búsqueda, catálogo por plataforma, "Populares ahora", "Para ti", recomendaciones y géneros ahora consultan primero a IGDB en vez de RAWG','RAWG queda como respaldo automático y transparente solo si IGDB no responde o no tiene resultados para esa consulta','Esto reduce la dependencia de la cuota mensual de RAWG, que venía agotándose seguido']},
+    {v:'2.2',d:'Uploads a imgbb limitados a portadas oficiales o elegidas a mano',items:['Solo se sube a imgbb la portada que se auto-selecciona como "mejor portada oficial" al agregar un juego nuevo, y las que el admin elige a mano (subir foto, pegar URL, elegir del picker de portadas, fijar como personalizada, aprobar una corrección sugerida)','El refresco automático de portadas faltantes en segundo plano y "Actualizar portadas masivas" ahora usan la URL de la fuente directamente, sin subirla a imgbb, para no gastar cuota en portadas de menor confianza']},
+    {v:'2.1',d:'Portadas personalizadas ahora se suben a imgbb',items:['Las portadas que subís vos (foto o URL personalizada) ya no se guardan como base64 gigante en la biblioteca: se suben a imgbb y solo se guarda la URL','Esto achica mucho el tamaño de cada juego guardado en el servidor y hace que la biblioteca cargue más rápido','Si por algún motivo falla la subida a imgbb (sin internet, servicio caído), se guarda igual una copia local para no perder la portada']},
     {v:'2.0',d:'Portadas oficiales de Steam y limpieza de código muerto',items:['Portadas de Steam ahora funcionan de verdad (antes dependían de un backend de Vento que ya no existe): se agregó una ruta nueva en el Worker que busca el appid del juego y arma la portada oficial vertical de Steam','El picker de portadas ("Elegir portada") ahora también busca en IGDB y Wikipedia además de TGDB/SGDB/RAWG/Steam, priorizando siempre las fuentes oficiales','Se sacó código muerto que simulaba portadas de PlayStation, Xbox, Nintendo, OpenCritic y CheapShark (nunca funcionaban, dependían de un backend viejo que ya no existe)','"Explorar → Tiendas" ahora deja en claro que solo Steam tiene una API pública disponible; el buscador de esa sección ya funciona con portadas reales','Se arregló un bug real: la sección "Completa tus sagas" de Inicio nunca se mostraba por un chequeo viejo que quedó pegado del código muerto','Autocompletado de portada al agregar un juego, portadas masivas y portadas automáticas de biblioteca ahora usan Steam + TGDB + SGDB + IGDB de verdad']},
     {v:'1.9',d:'Estadísticas en Sagas buscadas',items:['🎮 Sagas buscadas ahora muestra un ranking de las sagas más buscadas','Debajo del ranking, ficha con descripción e imagen del juego individual más buscado (vía IGDB)','Ranking de los juegos más buscados','Ranking de los juegos más agregados a la biblioteca, contando en cuántos usuarios distintos aparece cada uno','Se mantiene el historial detallado de búsquedas de saga debajo de los rankings']},
     {v:'1.8',d:'Vulnerabilidad de seguridad del backend corregida',items:['Login y registro ahora se verifican 100% en el servidor: la contraseña y su hash nunca salen del Worker','Sesión con token: cada acción que escribe datos requiere un token de sesión válido emitido por el servidor','Los endpoints /kv/get, /kv/set y /kv/delete ya no aceptan escrituras sin autenticación; cada usuario solo puede modificar su propia biblioteca/perfil/presencia (o un admin)','La lista de usuarios (_users_index) nunca vuelve a incluir hash ni salt de contraseñas al leerla desde el cliente','Cambio de nombre de usuario, cambio de contraseña y borrado de cuenta migrados a endpoints protegidos del Worker','Se dejó de enviar el hash/salt de la contraseña al servicio externo de catálogo en cada sincronización']},
@@ -4474,6 +4524,7 @@ function openSheet(id){
 
     if(g.customLink)h+='<div class="sheet-section"><div class="sheet-section-title">Enlace</div><a class="sheet-link" href="'+escHtml(g.customLink)+'" target="_blank" rel="noopener"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> '+escHtml(g.customLink.replace(/^https?:\/\//,'').substring(0,40))+'</a></div>';
 
+    if(g.review)h+='<div class="sheet-section"><div class="sheet-section-title">Mi reseña</div><div class="sheet-notes">'+escHtml(g.review)+'</div></div>';
     if(g.notes)h+='<div class="sheet-section"><div class="sheet-section-title">Notas privadas</div><div class="sheet-notes">'+escHtml(g.notes)+'</div></div>';
 
     h+='<div id="sheetRawgInfo"></div>';
@@ -4681,7 +4732,6 @@ async function bulkRefreshCovers(){if(!_isAdmin()){showToast('Solo el administra
             var cover=results[j];
             if(cover){
                 chunk[j].coverUrl=cover;updated++;
-                uploadCoverToServer(cover,chunk[j].id).then(function(cj){return function(local){if(local){cj.coverUrl=local;save();}};}(chunk[j])).catch(function(){});
             }
         }
         showToast("Buscando portadas... "+done+"/"+toUpdate.length+(updated?" ("+updated+" nuevas)":""),"info");
@@ -4796,6 +4846,7 @@ function openDatosSheet(id){
     h+='<div class="datos-option" onclick="editDatos(\'formato\')">'+iFormat+'<span class="datos-option-label">Formato</span><span class="datos-option-value">'+(g.formato||'Sin definir')+'</span>'+chevron+'</div>';
     var _rStars=(g.rating||0)?'★'.repeat(g.rating)+'☆'.repeat(5-g.rating):'Sin rating';
     h+='<div class="datos-option" onclick="editDatos(\'rating\')">'+ico('<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>')+'<span class="datos-option-label">Rating personal</span><span class="datos-option-value" style="color:var(--accent)">'+_rStars+'</span>'+chevron+'</div>';
+    h+='<div class="datos-option" onclick="editDatos(\'review\')">'+iNotes+'<span class="datos-option-label">Mi reseña</span><span class="datos-option-value">'+(g.review?'Editado':'')+'</span>'+chevron+'</div>';
     if(_admin)h+='<div class="datos-option" onclick="editDatos(\'dates\')">'+iDate+'<span class="datos-option-label">Fechas</span><span class="datos-option-value">'+(g.startDate||g.finishDate?'Configurado':'')+'</span>'+chevron+'</div>';
     h+='<div class="datos-option" onclick="editDatos(\'timesCompleted\')">'+iTimes+'<span class="datos-option-label">Veces completado</span><span class="datos-option-value">'+(g.timesCompleted||'')+'</span>'+chevron+'</div>';
     h+='<div class="datos-option" onclick="editDatos(\'playTime\')">'+iTime+'<span class="datos-option-label">Tiempo de juego</span><span class="datos-option-value">'+(g.playTime?g.playTime+'h':'')+'</span>'+chevron+'</div>';
@@ -4862,6 +4913,9 @@ function editDatos(field){
         sheet.innerHTML=h;
     } else if(field==='progress'){
         h+='Progreso</span></div><div class="datos-edit"><div class="datos-edit-row"><input type="number" id="datosVal" min="0" max="100" value="'+g.completion+'" placeholder="0-100"><button onclick="saveDato(\'completion\',parseInt(document.getElementById(\'datosVal\').value)||0)">Guardar</button></div><div style="font-size:0.72rem;color:var(--text3);margin-top:0.4rem">Porcentaje (0-100)</div></div>';
+        sheet.innerHTML=h;
+    } else if(field==='review'){
+        h+='Mi reseña</span></div><div class="datos-edit"><div class="fg"><textarea id="datosVal" rows="5" maxlength="1000" style="background:var(--bg-surface);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:0.65rem;color:var(--text);font-size:0.85rem;font-family:inherit;width:100%;resize:vertical;outline:none" placeholder="¿Qué te pareció el juego?">'+(g.review?escHtml(g.review):'')+'</textarea></div><button onclick="saveDato(\'review\',document.getElementById(\'datosVal\').value.trim())" style="width:100%;padding:0.65rem;background:var(--accent);color:#000;border:none;border-radius:10px;font-size:0.88rem;font-weight:600;font-family:inherit;cursor:pointer">Guardar</button></div>';
         sheet.innerHTML=h;
     } else if(field==='notes'){
         h+='Notas privadas</span></div><div class="datos-edit"><div class="fg"><textarea id="datosVal" rows="4" style="background:var(--bg-surface);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:0.65rem;color:var(--text);font-size:0.85rem;font-family:inherit;width:100%;resize:vertical;outline:none" placeholder="Tus notas...">'+(g.notes?escHtml(g.notes):'')+'</textarea></div><button onclick="saveDato(\'notes\',document.getElementById(\'datosVal\').value.trim())" style="width:100%;padding:0.65rem;background:var(--accent);color:#000;border:none;border-radius:10px;font-size:0.88rem;font-weight:600;font-family:inherit;cursor:pointer">Guardar</button></div>';
