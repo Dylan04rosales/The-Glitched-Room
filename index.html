@@ -4052,6 +4052,7 @@ async function _loadTopSearchedGameCard(name){
     }catch(e){box.innerHTML='';}
 }
 var VERSION_HISTORY=[
+    {v:'2.7',d:'Bug arreglado: "Ver juegos de la saga" no detectaba la saga de casi ningún juego',items:['IGDB deprecó el campo "collection" (singular) a favor de "collections" (plural); como el código todavía solo pedía el viejo campo, la mayoría de los juegos aparecían como "no pertenece a ninguna saga detectada" aunque sí tuvieran una','Ahora se piden y combinan ambos campos (collection y collections) junto con franchises, así que la detección vuelve a funcionar para prácticamente todos los juegos con saga en IGDB']},
     {v:'2.6',d:'El sorteo de backlog ahora muestra el estado del juego',items:['Al tirar el dado ("¿Qué juego?" 🎲), ahora se muestra debajo de la portada en qué estado está el juego sorteado (Jugando, Terminado, Abandonado, Archivado o Lo tengo), con su color y emoji correspondiente','Si el juego está platinado, se muestra un badge extra "🏆 Platinado"','El botón "Marcar Jugando" ya no aparece si el juego sorteado ya está en Jugando']},
     {v:'2.5',d:'Bug arreglado: sorteo de backlog no veía la mayoría de la biblioteca',items:['El sorteo aleatorio ("¿Qué juego?" 🎲) solo consideraba juegos con el estado exacto "Lo tengo", ignorando Jugando/Terminado/Abandonado/Archivado; ahora toma cualquier juego que ya tengas (todo menos "Quiero"), igual que el resto de la app considera "poseído"']},
     {v:'2.4',d:'Notificaciones de amistad, caché de estadísticas y reseñas propias',items:['Notificación global de solicitudes de amistad: ahora aparece un badge en el ícono "Perfil" de la barra inferior desde cualquier pantalla, no solo entrando a Amigos','El ranking de "Juegos más agregados a la biblioteca" (en Gestión → Sagas buscadas) ahora usa caché de 10 minutos en vez de recorrer todos los usuarios cada vez que se abre el panel; se puede forzar una actualización manual con el link "Actualizar ranking"','Nuevo campo "Mi reseña" por juego: cualquier usuario puede escribir su propia reseña/comentario sobre un juego de su biblioteca, visible en la ficha de detalle del juego']},
@@ -5370,19 +5371,21 @@ async function viewGameSaga(name){
         var auth=await getIGDBToken();
         if(!auth){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">IGDB no está disponible ahora mismo</div>';return;}
         var q=cleanSearchName(name).replace(/"/g,'');
-        var searchBody='search "'+q+'"; fields name,collection.name,collection.id,franchises.id,franchises.name; limit 8;';
+        var searchBody='search "'+q+'"; fields name,collection.id,collections.id,collections.name,franchises.id,franchises.name; limit 8;';
         var r1=await fetch(PROXY_ORIGIN+'/igdb/games',{method:'POST',headers:{'Client-ID':auth.cid,'Authorization':'Bearer '+auth.token},body:searchBody});
         if(!r1.ok){var et=await r1.text().catch(function(){return'';});box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">No se encontró el juego en IGDB<br><span style="color:var(--red);font-size:0.7rem">Debug: IGDB HTTP '+r1.status+' '+escHtml(et.slice(0,150))+'</span></div>';return;}
         var candidates=await r1.json();
         if(!candidates.length){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">No se encontró el juego en IGDB</div>';return;}
         var qLower=q.toLowerCase();
-        var withSaga=candidates.filter(function(c){return c.collection||(c.franchises&&c.franchises.length);});
+        var withSaga=candidates.filter(function(c){return c.collection||(c.collections&&c.collections.length)||(c.franchises&&c.franchises.length);});
         var exact=withSaga.filter(function(c){return c.name.toLowerCase()===qLower;});
         var found=exact[0]||withSaga[0]||candidates.find(function(c){return c.name.toLowerCase()===qLower;})||candidates[0];
         var collId=found.collection&&found.collection.id;
+        var collectionIds=(found.collections||[]).map(function(c){return c.id;});
         var franchiseIds=(found.franchises||[]).map(function(f){return f.id;});
         var whereClauses=[];
         if(collId)whereClauses.push('collection = '+collId);
+        if(collectionIds.length)whereClauses.push('collections = ('+collectionIds.join(',')+')');
         if(franchiseIds.length)whereClauses.push('franchises = ('+franchiseIds.join(',')+')');
         if(!whereClauses.length){_logSagaSearch(name,[]);box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">'+escHtml(name)+' no pertenece a ninguna saga detectada</div>';return;}
         var listBody='fields name,cover.image_id,first_release_date,platforms.name; where ('+whereClauses.join(' | ')+'); limit 24;';
