@@ -4091,6 +4091,7 @@ async function _loadTopSearchedGameCard(name){
     }catch(e){box.innerHTML='';}
 }
 var VERSION_HISTORY=[
+    {v:'3.1',d:'Bug arreglado: el gesto de retroceso dejaba un fondo oscuro pegado en pantalla',items:['Al hacer el gesto de "atrás" del celular con una ficha de juego u otro panel abierto, se cerraba el contenido pero el fondo oscuro detrás quedaba pegado tapando la pantalla (se veía como un Perfil roto/superpuesto)','Ahora el gesto de retroceso cierra correctamente cualquier fondo oscuro abierto y restaura el scroll de la pantalla']},
     {v:'3.0',d:'Preparativos para más usuarios: registro por invitación y arreglo de un cuello de botella grave',items:['Se separó la lista de usuarios (antes un solo archivo gigante compartido) en una entrada individual por usuario; evita que dos registros al mismo tiempo se pisen entre sí y que ese archivo crezca sin límite','El registro ahora requiere un código de invitación (salvo la cuenta admin); en Gestión → 🎟️ Invitaciones el admin puede generar códigos nuevos y copiarlos para repartir','Límite de intentos por conexión (IP) en registro y login, además del bloqueo por usuario que ya existía, para frenar bots y registros masivos','El heartbeat de "usuario en línea" pasó de cada 60s a cada 5 minutos para reducir la carga sobre el servidor']},
     {v:'2.7',d:'Bug arreglado: "Ver juegos de la saga" no detectaba la saga de casi ningún juego',items:['IGDB deprecó el campo "collection" (singular) a favor de "collections" (plural); como el código todavía solo pedía el viejo campo, la mayoría de los juegos aparecían como "no pertenece a ninguna saga detectada" aunque sí tuvieran una','Ahora se piden y combinan ambos campos (collection y collections) junto con franchises, así que la detección vuelve a funcionar para prácticamente todos los juegos con saga en IGDB']},
     {v:'2.6',d:'El sorteo de backlog ahora muestra el estado del juego',items:['Al tirar el dado ("¿Qué juego?" 🎲), ahora se muestra debajo de la portada en qué estado está el juego sorteado (Jugando, Terminado, Abandonado, Archivado o Lo tengo), con su color y emoji correspondiente','Si el juego está platinado, se muestra un badge extra "🏆 Platinado"','El botón "Marcar Jugando" ya no aparece si el juego sorteado ya está en Jugando']},
@@ -6159,6 +6160,8 @@ window.addEventListener('popstate',function(e){
     var openOverlay=document.querySelector('.modal-overlay.open, .sheet.open, .gd-sheet.open');
     if(openOverlay){
         openOverlay.classList.remove('open');
+        document.querySelectorAll('[id*="Backdrop" i].open, .gd-backdrop.open, .sheet-backdrop.open').forEach(function(el){el.classList.remove('open');});
+        document.body.style.overflow='';
         history.pushState({view:currentView||'inicio'},'',location.href);
         return;
     }
