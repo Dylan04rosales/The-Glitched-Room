@@ -1757,7 +1757,7 @@ var file=input.files[0];
 if(file.size>10*1024*1024){showToast('Imagen muy grande (máx 10MB)','error');return;}
 showToast('Subiendo portada...','info');
 var url=await uploadCoverFile(file,g.id);
-if(url){g.coverUrl=url;g.coverCustom=true;save();showToast('Portada subida','success');refreshViews();
+if(url){g.coverUrl=url;g.coverCustom=true;_setPlatformCover(g,url);save();showToast('Portada subida','success');refreshViews();
 if(_fromGestion){_fromGestion=false;closeDatosSheet();renderGestion();}else{openDatosSheet(datosGameId);}}
 else{showToast('Error al subir la portada','error');}
 }
@@ -2800,6 +2800,7 @@ function renderPerfil(){
     h+='<button class="profile-tab'+(profileTab==='amigos'?' active':'')+'" data-amigos-tab onclick="setProfileTab(\'amigos\')">👥 Amigos</button>';
     h+='<button class="profile-tab'+(profileTab==='cuenta'?' active':'')+'" onclick="setProfileTab(\'cuenta\')">Cuenta</button></div>';
     if(profileTab==='juegos'){
+        h+='<div id="collectionCarousels"></div>';
         const tabs=['all',...STATUSES];
         h+='<div class="filter-tabs">';
         for(const t of tabs){
@@ -2854,7 +2855,7 @@ function renderPerfil(){
         h+='<div class="stats-content" id="statsContent"></div>';
     }
     el.innerHTML=h;
-    if(profileTab==='juegos'&&games.length)renderPerfilGrid();
+    if(profileTab==='juegos'&&games.length){renderPerfilGrid();loadCollectionCarousels();}
     if(profileTab==='sagas')renderSagas();
     if(profileTab==='stats')renderStats();
     if(profileTab==='gestion')renderGestion();
@@ -4091,6 +4092,9 @@ async function _loadTopSearchedGameCard(name){
     }catch(e){box.innerHTML='';}
 }
 var VERSION_HISTORY=[
+    {v:'3.4',d:'Carrusel de "Juegos en esta colección" dentro de la ficha',items:['Si un juego de tu biblioteca se llama tipo "God of War Collection" o "God of War Saga" (o tiene "colección"/"collection"/"saga" en el nombre), su ficha ahora muestra un carrusel con los demás juegos de esa colección, arriba de "Mi reseña" y "Notas privadas"','Los juegos del carrusel que ya tenés muestran el cartel "En biblioteca"; los que no tenés muestran un botón "+" para agregarlos directo, sin salir de la ficha a buscar de nuevo']},
+    {v:'3.3',d:'Peso por plataforma y tarjetas de saga con opción de agregar',items:['Nuevo campo "Peso" (admin) en Datos: se puede cargar cuánto pesa el juego en cada plataforma en la que está disponible; en la ficha se muestra el peso de la plataforma que tengas activa (cambia junto con la portada al tocar un chip de plataforma)','"Ver juegos de la saga" ahora muestra los resultados como tarjetas iguales a las de Inicio/Explorar (portada, título, año) en vez de una grilla simple','Los juegos de la saga que ya tenés en biblioteca muestran el cartel "En biblioteca" arriba de la portada; los que no tenés muestran un botón "+" que abre el formulario para agregarlos directo, sin salir a buscar el juego de nuevo']},
+    {v:'3.2',d:'Ediciones y versiones de un mismo juego unificadas en una sola ficha',items:['Cuando agregás un juego con varias plataformas seleccionadas (ej: PS3, PS4, Xbox 360, Java, Bedrock), ahora se busca y guarda una portada oficial distinta para cada una, en vez de una sola compartida','En la ficha del juego, si tiene más de una plataforma, aparecen como chips tocables debajo del título; al tocar una se muestra su portada correspondiente (Premium Edition, Enhanced Edition, Java Edition, etc.), sin salir de la ficha ni duplicar el juego en la biblioteca','Subir una foto, pegar una URL, elegir del picker o fijar una portada como personalizada ahora la guarda para la plataforma/edición que tengas activa en ese momento, sin pisar las portadas de las demás']},
     {v:'3.1',d:'Bug arreglado: el gesto de retroceso dejaba un fondo oscuro pegado en pantalla',items:['Al hacer el gesto de "atrás" del celular con una ficha de juego u otro panel abierto, se cerraba el contenido pero el fondo oscuro detrás quedaba pegado tapando la pantalla (se veía como un Perfil roto/superpuesto)','Ahora el gesto de retroceso cierra correctamente cualquier fondo oscuro abierto y restaura el scroll de la pantalla']},
     {v:'3.0',d:'Preparativos para más usuarios: registro por invitación y arreglo de un cuello de botella grave',items:['Se separó la lista de usuarios (antes un solo archivo gigante compartido) en una entrada individual por usuario; evita que dos registros al mismo tiempo se pisen entre sí y que ese archivo crezca sin límite','El registro ahora requiere un código de invitación (salvo la cuenta admin); en Gestión → 🎟️ Invitaciones el admin puede generar códigos nuevos y copiarlos para repartir','Límite de intentos por conexión (IP) en registro y login, además del bloqueo por usuario que ya existía, para frenar bots y registros masivos','El heartbeat de "usuario en línea" pasó de cada 60s a cada 5 minutos para reducir la carga sobre el servidor']},
     {v:'2.7',d:'Bug arreglado: "Ver juegos de la saga" no detectaba la saga de casi ningún juego',items:['IGDB deprecó el campo "collection" (singular) a favor de "collections" (plural); como el código todavía solo pedía el viejo campo, la mayoría de los juegos aparecían como "no pertenece a ninguna saga detectada" aunque sí tuvieran una','Ahora se piden y combinan ambos campos (collection y collections) junto con franchises, así que la detección vuelve a funcionar para prácticamente todos los juegos con saga en IGDB']},
@@ -4342,8 +4346,8 @@ function _revApply(){
         var d=_revDiffs[i];
         if(d.checked===false)continue;
         applied++;
-        if(d.field==='coverUrl'&&d.newCover){g.coverUrl=d.newCover;g.coverCustom=true;
-            uploadCoverToServer(d.newCover,g.id).then(function(local){if(local){g.coverUrl=local;save();refreshViews();}});}
+        if(d.field==='coverUrl'&&d.newCover){g.coverUrl=d.newCover;g.coverCustom=true;_setPlatformCover(g,d.newCover);
+            uploadCoverToServer(d.newCover,g.id).then(function(local){if(local){g.coverUrl=local;_setPlatformCover(g,local);save();refreshViews();}});}
         else if(d.field==='name'){g.name=d.new_;}
         else{g[d.field]=d.field==='metacriticScore'?parseInt(d.new_)||0:d.new_;}
     }
@@ -4372,10 +4376,10 @@ async function clearCover(){
 }
 async function lockCover(){
     var g=games.find(function(x){return x.id===datosGameId});if(!g||!g.coverUrl)return;
-    g.coverCustom=true;save();refreshViews();
+    g.coverCustom=true;_setPlatformCover(g,g.coverUrl);save();refreshViews();
     showToast('Guardando portada...','info');
     var local=await uploadCoverToServer(g.coverUrl,g.id);
-    if(local){g.coverUrl=local;save();refreshViews();}
+    if(local){g.coverUrl=local;_setPlatformCover(g,local);save();refreshViews();}
     showToast('Portada fijada como personalizada','success');
     if(_fromGestion){renderGestion();editDatos('image');}
     else{editDatos('image');}
@@ -4546,13 +4550,25 @@ function openSheet(id){
     h+='<div class="sheet-cover">'+coverH+'</div>';
     h+='<div class="sheet-body">';
     h+='<div class="sheet-title">'+escHtml(g.name)+(g.gameCategory==='DLC'?' <span style="font-size:0.55rem;font-weight:700;padding:2px 6px;border-radius:4px;background:rgba(251,191,36,0.2);color:#fbbf24;vertical-align:middle;text-transform:uppercase;letter-spacing:0.3px">DLC</span>':'')+'</div>';
-    h+='<div class="sheet-sub">'+(g.saga?escHtml(g.saga)+' · ':'')+(g.edition?escHtml(g.edition)+' · ':'')+(g.platform?'<span style="color:'+s+'">'+escHtml(g.platform)+'</span>':'')+(g.formato?(g.platform?' · ':'')+escHtml(g.formato):'')+'</div>';
+    var _platList=(g.platform||'').split(',').map(function(x){return x.trim();}).filter(Boolean);
+    var _platChips='';
+    if(_platList.length>1){
+        var _activePlat=g.activePlatform||_platList[0];
+        _platChips='<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:4px">';
+        for(var _pi=0;_pi<_platList.length;_pi++){var _p=_platList[_pi];var _isAct=_p===_activePlat;
+            _platChips+='<button onclick="selectGamePlatformCover(\''+g.id+'\',\''+escHtml(_p).replace(/'/g,"\\'")+'\')" style="padding:0.3rem 0.6rem;border-radius:8px;font-size:0.7rem;font-weight:700;font-family:inherit;cursor:pointer;border:'+(_isAct?'1px solid var(--accent)':'1px solid rgba(255,255,255,0.08)')+';background:'+(_isAct?'rgba(245,197,24,0.12)':'var(--bg-surface)')+';color:'+(_isAct?'var(--accent)':'var(--text2)')+'">'+escHtml(_p)+'</button>';}
+        _platChips+='</div>';
+    }
+    h+='<div class="sheet-sub">'+(g.saga?escHtml(g.saga)+' · ':'')+(g.edition?escHtml(g.edition)+' · ':'')+(g.platform&&!_platChips?'<span style="color:'+s+'">'+escHtml(g.platform)+'</span>':'')+(g.formato?(g.platform&&!_platChips?' · ':'')+escHtml(g.formato):'')+'</div>'+_platChips;
     h+='<div class="sheet-status-row"><button class="sheet-status-btn" onclick="openStatusSheet(\''+g.id+'\')" style="background:'+(STATUS_COLORS[g.status]||'var(--accent)')+'">'+(STATUS_EMOJI[g.status]||'')+' '+escHtml(g.status)+'</button><button class="sheet-menu-btn" onclick="openDatosSheet(\''+g.id+'\')" style="width:auto;padding:0 14px;gap:6px;display:flex;align-items:center;font-size:0.75rem;font-weight:600;color:var(--accent)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Datos</button></div>';
     h+='<button onclick="viewGameSaga(\''+escHtml(g.name).replace(/'/g,"\\'")+'\')" style="margin-top:0.5rem;width:100%;padding:0.55rem;background:none;border:1px dashed rgba(255,255,255,0.15);border-radius:10px;color:var(--text2);font-size:0.78rem;font-weight:600;font-family:inherit;cursor:pointer">🎮 Ver juegos de la saga</button>';
 
     h+='<div class="sheet-section"><div class="sheet-section-title">Progreso</div>';
     h+='<div class="sheet-progress"><div class="sheet-progress-bar"><div class="sheet-progress-fill" style="width:'+g.completion+'%;background:'+pColor+'"></div></div><div class="sheet-progress-text">'+g.completion+'%</div></div>';
     if(g.trophiesTotal)h+='<div class="sheet-detail-row"><span class="sheet-detail-label">Trofeos</span><span class="sheet-detail-value">'+g.trophiesEarned+' / '+g.trophiesTotal+(g.platinum?' <span style="color:#e5e4e2;font-size:0.75rem">🏆 Platino</span>':'')+'</span></div>';
+    var _sizePlat=g.activePlatform||(g.platform||'').split(',')[0].trim();
+    var _sizeVal=(g.platformSizes&&_sizePlat)?g.platformSizes[_sizePlat]:'';
+    if(_sizeVal)h+='<div class="sheet-detail-row"><span class="sheet-detail-label">Peso'+(_sizePlat?' ('+escHtml(_sizePlat)+')':'')+'</span><span class="sheet-detail-value">'+escHtml(_sizeVal)+'</span></div>';
     if(g.timesCompleted)h+='<div class="sheet-detail-row"><span class="sheet-detail-label">Veces completado</span><span class="sheet-detail-value">'+g.timesCompleted+'</span></div>';
     if(g.playTime)h+='<div class="sheet-detail-row"><span class="sheet-detail-label">Tiempo de juego</span><span class="sheet-detail-value">'+g.playTime+'h</span></div>';
     h+='<div class="sheet-detail-row"><span class="sheet-detail-label">Rating</span><span class="sheet-detail-value sheet-stars">'+stars+'</span></div>';
@@ -4568,6 +4584,7 @@ function openSheet(id){
 
     if(g.customLink)h+='<div class="sheet-section"><div class="sheet-section-title">Enlace</div><a class="sheet-link" href="'+escHtml(g.customLink)+'" target="_blank" rel="noopener"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> '+escHtml(g.customLink.replace(/^https?:\/\//,'').substring(0,40))+'</a></div>';
 
+    if(/\b(collection|colecci[oó]n|saga)\b/i.test(g.name))h+='<div class="sheet-section" id="sheetCollectionSection"><div class="sheet-section-title">Juegos en esta colección</div><div class="carousel" id="sheetCollectionBox"><div style="color:var(--text3);font-size:0.8rem;padding:0.5rem 0">Buscando...</div></div></div>';
     if(g.review)h+='<div class="sheet-section"><div class="sheet-section-title">Mi reseña</div><div class="sheet-notes">'+escHtml(g.review)+'</div></div>';
     if(g.notes)h+='<div class="sheet-section"><div class="sheet-section-title">Notas privadas</div><div class="sheet-notes">'+escHtml(g.notes)+'</div></div>';
 
@@ -4582,6 +4599,36 @@ function openSheet(id){
     document.getElementById('sheetBackdrop').classList.add('open');
     document.getElementById('gameSheet').classList.add('open');
     loadSheetRawgInfo(g);
+    if(document.getElementById('sheetCollectionBox'))loadSheetCollectionCarousel(g);
+}
+async function loadSheetCollectionCarousel(g){
+    var box=document.getElementById('sheetCollectionBox');if(!box)return;
+    var res=await _fetchIgdbSagaGames(g.name).catch(function(){return{error:'fetch-failed'};});
+    var box2=document.getElementById('sheetCollectionBox');
+    var section=document.getElementById('sheetCollectionSection');
+    if(!box2)return;
+    if(res.error||!res.list||!res.list.length){
+        if(section)section.style.display='none';
+        return;
+    }
+    var list=res.list.filter(function(x){return x.name.toLowerCase()!==g.name.toLowerCase();});
+    if(!list.length){if(section)section.style.display='none';return;}
+    var plusSvg='<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+    var h='';
+    for(var i=0;i<list.length;i++){
+        var item=list[i];
+        var yr=item.first_release_date?new Date(item.first_release_date*1000).getFullYear():'';
+        var cover=item.cover&&item.cover.image_id?'https://images.igdb.com/igdb/image/upload/t_cover_big/'+item.cover.image_id+'.jpg':'';
+        var plats=(item.platforms||[]).map(function(p){return p.name;}).join(', ');
+        var owned=_isOwned(item.name);
+        var _isn=escHtml(item.name).replace(/'/g,"\\'");var _icov=escHtml(cover).replace(/'/g,"\\'");var _iplt=escHtml(plats).replace(/'/g,"\\'");
+        var ownedBadge=owned?'<span style="position:absolute;top:6px;left:6px;padding:2px 6px;border-radius:4px;font-size:0.55rem;font-weight:700;background:rgba(52,211,153,0.9);color:#04231a;z-index:3;white-space:nowrap">En biblioteca</span>':'';
+        var addBtn=owned?'':'<button class="rec-card-add" onclick="event.stopPropagation();closeSheet();_igdbQuickAdd(\''+_isn+'\',\''+_icov+'\',\''+_iplt+'\',0,'+(yr||0)+')">'+plusSvg+'</button>';
+        var img=cover?'<img src="'+cover+'" loading="lazy" style="object-fit:cover" referrerpolicy="no-referrer" alt="">':'<div class="cover-placeholder" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:800;color:rgba(255,255,255,0.15)">'+escHtml(getInitials(item.name))+'</div>';
+        h+='<div class="rec-card"><div class="rec-card-img">'+img+ownedBadge+addBtn+'</div><div class="rec-card-title">'+escHtml(item.name)+'</div><div class="rec-card-meta">'+(yr||'')+'</div></div>';
+    }
+    box2.innerHTML=h;
+    _logSagaSearch(g.name,list.map(function(x){return x.name;}));
 }
 function loadSheetRawgInfo(g){
     var key=gk('rawg');if(!key||!g.rawgId)return;
@@ -4883,10 +4930,12 @@ function openDatosSheet(id){
     const iImg=ico('<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>');
     const iLink=ico('<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>');
     const iFormat=ico('<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>');
+    const iSize=ico('<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>');
 
     var _admin=_isAdmin();
     let h='<div class="sheet-handle"></div><div class="datos-title">Añadir datos</div>';
     if(_admin)h+='<div class="datos-option" onclick="editDatos(\'platform\')">'+iPlat+'<span class="datos-option-label">Plataformas</span><span class="datos-option-value">'+escHtml(g.platform)+'</span>'+chevron+'</div>';
+    if(_admin)h+='<div class="datos-option" onclick="editDatos(\'sizes\')">'+iSize+'<span class="datos-option-label">Peso</span><span class="datos-option-value">'+((g.platformSizes&&Object.keys(g.platformSizes).length)?'Configurado':'')+'</span>'+chevron+'</div>';
     h+='<div class="datos-option" onclick="editDatos(\'formato\')">'+iFormat+'<span class="datos-option-label">Formato</span><span class="datos-option-value">'+(g.formato||'Sin definir')+'</span>'+chevron+'</div>';
     var _rStars=(g.rating||0)?'★'.repeat(g.rating)+'☆'.repeat(5-g.rating):'Sin rating';
     h+='<div class="datos-option" onclick="editDatos(\'rating\')">'+ico('<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>')+'<span class="datos-option-label">Rating personal</span><span class="datos-option-value" style="color:var(--accent)">'+_rStars+'</span>'+chevron+'</div>';
@@ -4907,7 +4956,7 @@ function openDatosSheet(id){
 function closeDatosSheet(){document.getElementById('datosBackdrop').classList.remove('open');document.getElementById('datosSheet').classList.remove('open');datosGameId=null;}
 
 function editDatos(field){
-    if(['dates','notes','image','link'].indexOf(field)>=0&&!_isAdmin()){showToast('Solo el administrador puede editar esto','error');return;}
+    if(['dates','notes','image','link','sizes'].indexOf(field)>=0&&!_isAdmin()){showToast('Solo el administrador puede editar esto','error');return;}
     const g=games.find(x=>x.id===datosGameId);if(!g)return;
     const sheet=document.getElementById('datosSheet');
     var backAction=_fromGestion?'closeDatosSheet();_fromGestion=false;':'openDatosSheet(\''+g.id+'\')';
@@ -4929,6 +4978,20 @@ function editDatos(field){
                 h+='<button onclick="togglePlat(this,\''+p.replace(/'/g,"\\'")+'\')" data-plat="'+escHtml(p)+'" style="padding:0.45rem 0.85rem;border-radius:10px;font-size:0.8rem;font-weight:600;font-family:inherit;cursor:pointer;transition:all 0.15s;border:'+(sel?'1px solid var(--accent)':'1px solid rgba(255,255,255,0.08)')+';background:'+(sel?'rgba(245,197,24,0.12)':'var(--bg-surface)')+';color:'+(sel?'var(--accent)':'var(--text2)')+'">'+escHtml(p)+'</button>';}
             h+='</div></div>';}
         h+='<button onclick="savePlatforms()" style="width:100%;padding:0.7rem;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#000;border:none;border-radius:12px;font-size:0.88rem;font-weight:700;font-family:inherit;cursor:pointer;margin-top:0.5rem;box-shadow:0 4px 12px rgba(245,197,24,0.2)">Guardar</button></div>';
+        sheet.innerHTML=h;
+    } else if(field==='sizes'){
+        var _plats=(g.platform||'').split(',').map(function(p){return p.trim();}).filter(Boolean);
+        var _sizes=g.platformSizes||{};
+        h+='Peso</span></div><div class="datos-edit">';
+        if(!_plats.length){
+            h+='<div style="text-align:center;color:var(--text3);font-size:0.82rem;padding:1rem 0">Este juego todavía no tiene ninguna plataforma asignada. Agregá una primero en "Plataformas".</div>';
+        }else{
+            for(var _si=0;_si<_plats.length;_si++){var _p=_plats[_si];
+                h+='<div class="fg"><label>'+escHtml(_p)+'</label><input type="text" data-size-plat="'+escHtml(_p)+'" value="'+escHtml(_sizes[_p]||'')+'" placeholder="Ej: 45 GB"></div>';
+            }
+            h+='<button onclick="saveSizes()" style="width:100%;padding:0.7rem;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#000;border:none;border-radius:12px;font-size:0.88rem;font-weight:700;font-family:inherit;cursor:pointer;margin-top:0.5rem">Guardar</button>';
+        }
+        h+='</div>';
         sheet.innerHTML=h;
     } else if(field==='formato'){
         h+='Formato</span></div><div class="datos-edit"><div style="display:flex;flex-direction:column;gap:6px">';
@@ -5071,7 +5134,7 @@ async function pickCover(idx){
     const covers=window._coverPickerData;if(!covers||!covers[idx])return;
     const url=covers[idx].url;
     var ver=++_pickVer;
-    g.coverUrl=url;g.coverCustom=true;save();refreshViews();
+    g.coverUrl=url;g.coverCustom=true;_setPlatformCover(g,url);save();refreshViews();
     var dv=document.getElementById('datosVal');if(dv)dv.value=url;
     document.querySelectorAll('.cover-pick').forEach(function(el,i){
         el.classList.toggle('selected',i===idx);
@@ -5082,7 +5145,7 @@ async function pickCover(idx){
     showToast('Guardando portada...','info');
     var local=await uploadCoverToServer(url,g.id);
     if(ver!==_pickVer)return;
-    if(local){g.coverUrl=local;save();refreshViews();showToast('Portada guardada en servidor','success');}
+    if(local){g.coverUrl=local;_setPlatformCover(g,local);save();refreshViews();showToast('Portada guardada en servidor','success');}
     else{showToast('Portada actualizada','success');}
 }
 function togglePlatinum(){
@@ -5107,6 +5170,20 @@ function savePlatforms(){
     else{openDatosSheet(datosGameId);}
     refreshViews();
 }
+function saveSizes(){
+    var g=games.find(function(x){return x.id===datosGameId});if(!g)return;
+    var inputs=document.querySelectorAll('input[data-size-plat]');
+    g.platformSizes=g.platformSizes||{};
+    for(var i=0;i<inputs.length;i++){
+        var p=inputs[i].getAttribute('data-size-plat');
+        var v=inputs[i].value.trim();
+        if(v)g.platformSizes[p]=v;else delete g.platformSizes[p];
+    }
+    save();showToast('Peso guardado','success');
+    if(_fromGestion){_fromGestion=false;closeDatosSheet();renderGestion();}
+    else{openDatosSheet(datosGameId);}
+    refreshViews();
+}
 async function saveDato(field,value){
     const g=games.find(x=>x.id===datosGameId);if(!g)return;
     if(field==='dates'){
@@ -5115,10 +5192,10 @@ async function saveDato(field,value){
     } else {
         g[field]=value;
         if(field==='coverUrl'){
-            g.coverCustom=true;
+            g.coverCustom=true;_setPlatformCover(g,value);
             save();showToast('Guardando portada...','info');
             var local=await uploadCoverToServer(value,g.id);
-            if(local){g.coverUrl=local;save();refreshViews();showToast('Portada guardada en servidor','success');}
+            if(local){g.coverUrl=local;_setPlatformCover(g,local);save();refreshViews();showToast('Portada guardada en servidor','success');}
             else{showToast('Dato guardado','success');}
             if(_fromGestion){_fromGestion=false;closeDatosSheet();renderGestion();}
             return;
@@ -5400,6 +5477,35 @@ async function _logSagaSearch(query,resultNames){
         await _dbSet('saga_search_log',log,true);
     }catch(e){}
 }
+async function _fetchIgdbSagaGames(name){
+    var auth=await getIGDBToken();
+    if(!auth)return{error:'no-igdb'};
+    var q=cleanSearchName(name).replace(/"/g,'');
+    var searchBody='search "'+q+'"; fields name,collection.id,collections.id,collections.name,franchises.id,franchises.name; limit 8;';
+    var r1=await fetch(PROXY_ORIGIN+'/igdb/games',{method:'POST',headers:{'Client-ID':auth.cid,'Authorization':'Bearer '+auth.token},body:searchBody});
+    if(!r1.ok)return{error:'not-found'};
+    var candidates=await r1.json();
+    if(!candidates.length)return{error:'not-found'};
+    var qLower=q.toLowerCase();
+    var withSaga=candidates.filter(function(c){return c.collection||(c.collections&&c.collections.length)||(c.franchises&&c.franchises.length);});
+    var exact=withSaga.filter(function(c){return c.name.toLowerCase()===qLower;});
+    var found=exact[0]||withSaga[0]||candidates.find(function(c){return c.name.toLowerCase()===qLower;})||candidates[0];
+    var collId=found.collection&&found.collection.id;
+    var collectionIds=(found.collections||[]).map(function(c){return c.id;});
+    var franchiseIds=(found.franchises||[]).map(function(f){return f.id;});
+    var whereClauses=[];
+    if(collId)whereClauses.push('collection = '+collId);
+    if(collectionIds.length)whereClauses.push('collections = ('+collectionIds.join(',')+')');
+    if(franchiseIds.length)whereClauses.push('franchises = ('+franchiseIds.join(',')+')');
+    if(!whereClauses.length)return{error:'no-saga'};
+    var listBody='fields name,cover.image_id,first_release_date,platforms.name; where ('+whereClauses.join(' | ')+'); limit 24;';
+    var r2=await fetch(PROXY_ORIGIN+'/igdb/games',{method:'POST',headers:{'Client-ID':auth.cid,'Authorization':'Bearer '+auth.token},body:listBody});
+    if(!r2.ok)return{error:'fetch-failed'};
+    var list=(await r2.json())||[];
+    list.sort(function(a,b){return(a.first_release_date||0)-(b.first_release_date||0);});
+    if(!list.length)return{error:'no-saga'};
+    return{list:list};
+}
 async function viewGameSaga(name){
     var old=document.getElementById('sagaViewOverlay');if(old)old.remove();
     var ov=document.createElement('div');ov.id='sagaViewOverlay';
@@ -5409,46 +5515,25 @@ async function viewGameSaga(name){
     document.body.appendChild(ov);
     var box=ov.firstElementChild;
     try{
-        var auth=await getIGDBToken();
-        if(!auth){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">IGDB no está disponible ahora mismo</div>';return;}
-        var q=cleanSearchName(name).replace(/"/g,'');
-        var searchBody='search "'+q+'"; fields name,collection.id,collections.id,collections.name,franchises.id,franchises.name; limit 8;';
-        var r1=await fetch(PROXY_ORIGIN+'/igdb/games',{method:'POST',headers:{'Client-ID':auth.cid,'Authorization':'Bearer '+auth.token},body:searchBody});
-        if(!r1.ok){var et=await r1.text().catch(function(){return'';});box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">No se encontró el juego en IGDB<br><span style="color:var(--red);font-size:0.7rem">Debug: IGDB HTTP '+r1.status+' '+escHtml(et.slice(0,150))+'</span></div>';return;}
-        var candidates=await r1.json();
-        if(!candidates.length){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">No se encontró el juego en IGDB</div>';return;}
-        var qLower=q.toLowerCase();
-        var withSaga=candidates.filter(function(c){return c.collection||(c.collections&&c.collections.length)||(c.franchises&&c.franchises.length);});
-        var exact=withSaga.filter(function(c){return c.name.toLowerCase()===qLower;});
-        var found=exact[0]||withSaga[0]||candidates.find(function(c){return c.name.toLowerCase()===qLower;})||candidates[0];
-        var collId=found.collection&&found.collection.id;
-        var collectionIds=(found.collections||[]).map(function(c){return c.id;});
-        var franchiseIds=(found.franchises||[]).map(function(f){return f.id;});
-        var whereClauses=[];
-        if(collId)whereClauses.push('collection = '+collId);
-        if(collectionIds.length)whereClauses.push('collections = ('+collectionIds.join(',')+')');
-        if(franchiseIds.length)whereClauses.push('franchises = ('+franchiseIds.join(',')+')');
-        if(!whereClauses.length){_logSagaSearch(name,[]);box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">'+escHtml(name)+' no pertenece a ninguna saga detectada</div>';return;}
-        var listBody='fields name,cover.image_id,first_release_date,platforms.name; where ('+whereClauses.join(' | ')+'); limit 24;';
-        var r2=await fetch(PROXY_ORIGIN+'/igdb/games',{method:'POST',headers:{'Client-ID':auth.cid,'Authorization':'Bearer '+auth.token},body:listBody});
-        if(!r2.ok){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">Error al buscar los juegos de la saga</div>';return;}
-        var list=(await r2.json())||[];
-        list.sort(function(a,b){return(a.first_release_date||0)-(b.first_release_date||0);});
-        if(!list.length){_logSagaSearch(name,[]);box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">'+escHtml(name)+' no pertenece a ninguna saga detectada</div>';return;}
+        var res=await _fetchIgdbSagaGames(name);
+        if(res.error==='no-igdb'){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">IGDB no está disponible ahora mismo</div>';return;}
+        if(res.error==='not-found'){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">No se encontró el juego en IGDB</div>';return;}
+        if(res.error==='no-saga'||res.error==='fetch-failed'){_logSagaSearch(name,[]);box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">'+escHtml(name)+' no pertenece a ninguna saga detectada</div>';return;}
+        var list=res.list;
         var h='<div style="font-size:0.95rem;font-weight:800;margin-bottom:0.8rem;text-align:center">Saga de '+escHtml(name)+'</div>';
-        h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">';
+        h+='<div class="explore-grid" style="padding:0">';
+        var plusSvg='<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
         for(var i=0;i<list.length;i++){
             var g=list[i];
             var yr=g.first_release_date?new Date(g.first_release_date*1000).getFullYear():'';
             var cover=g.cover&&g.cover.image_id?'https://images.igdb.com/igdb/image/upload/t_cover_big/'+g.cover.image_id+'.jpg':'';
+            var plats=(g.platforms||[]).map(function(p){return p.name;}).join(', ');
             var owned=_isOwned(g.name);
-            var ownedBadge=owned?'<span style="position:absolute;top:4px;left:4px;padding:2px 6px;border-radius:6px;font-size:0.52rem;font-weight:700;background:rgba(52,211,153,0.85);color:#04231a">En biblioteca</span>':'';
-            h+='<div onclick="addSagaGame('+i+')" data-saga-idx="'+i+'" style="cursor:pointer;text-align:center">'+
-               '<div style="position:relative;width:100%;aspect-ratio:3/4;border-radius:8px;overflow:hidden;background:var(--bg-elevated)">'+
-               (cover?'<img src="'+cover+'" style="width:100%;height:100%;object-fit:cover" referrerpolicy="no-referrer" alt="">':'')+ownedBadge+
-               '</div><div style="font-size:0.65rem;margin-top:4px;color:var(--text2)">'+escHtml(g.name)+'</div>'+
-               (yr?'<div style="font-size:0.6rem;color:var(--text3)">'+yr+'</div>':'')+
-               '</div>';
+            var _gsn=escHtml(g.name).replace(/'/g,"\\'");var _gcov=escHtml(cover).replace(/'/g,"\\'");var _gplt=escHtml(plats).replace(/'/g,"\\'");
+            var ownedBadge=owned?'<span style="position:absolute;top:6px;left:6px;padding:2px 6px;border-radius:4px;font-size:0.55rem;font-weight:700;background:rgba(52,211,153,0.9);color:#04231a;z-index:3;white-space:nowrap">En biblioteca</span>':'';
+            var addBtn=owned?'':'<button class="rec-card-add" onclick="event.stopPropagation();document.getElementById(\'sagaViewOverlay\').remove();_igdbQuickAdd(\''+_gsn+'\',\''+_gcov+'\',\''+_gplt+'\',0,'+(yr||0)+')">'+plusSvg+'</button>';
+            var img=cover?'<img src="'+cover+'" loading="lazy" style="object-fit:cover" referrerpolicy="no-referrer" alt="">':'<div class="cover-placeholder" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:800;color:rgba(255,255,255,0.15)">'+escHtml(getInitials(g.name))+'</div>';
+            h+='<div class="rec-card"><div class="rec-card-img">'+img+ownedBadge+addBtn+'</div><div class="rec-card-title">'+escHtml(g.name)+'</div><div class="rec-card-meta">'+(yr||'')+'</div></div>';
         }
         h+='</div>';
         h+='<button onclick="document.getElementById(\'sagaViewOverlay\').remove()" style="margin-top:1rem;width:100%;padding:0.6rem;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:var(--text3);font-size:0.8rem;font-weight:600;font-family:inherit;cursor:pointer">Cerrar</button>';
@@ -5707,20 +5792,43 @@ function saveGame(e){
     else{data.id=genId();data.addedDate=new Date().toISOString();games.push(data);showToast('Juego agregado','success');}
     save();closeModal('addModal');refreshViews();
     if(!editingId){
-        var _gid=data.id,_plat=data.platform,_name=data.name,_existingCover=data.coverUrl;
-        fetchPlatformCover(lastRawgId,_plat,_name).then(function(bestCover){
-            var finalCover=bestCover||_existingCover;
-            if(!finalCover)return;
-            var _g=games.find(function(x){return x.id===_gid;});
-            if(!_g)return;
-            _g.coverUrl=finalCover;
-            if(finalCover.indexOf(COVERS_URL)!==0&&COVERS_URL){
-                uploadCoverToServer(finalCover,_gid).then(function(local){
-                    var _g2=games.find(function(x){return x.id===_gid;});
-                    if(_g2){_g2.coverUrl=local||finalCover;if(local)_g2.coverCustom=true;save();refreshViews();}
-                }).catch(function(){save();refreshViews();});
-            }else{save();refreshViews();}
-        }).catch(function(){});
+        var _gid=data.id,_platStr=data.platform,_name=data.name,_existingCover=data.coverUrl;
+        var _plats=(_platStr||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+        if(_plats.length<=1){
+            fetchPlatformCover(lastRawgId,_platStr,_name).then(function(bestCover){
+                var finalCover=bestCover||_existingCover;
+                if(!finalCover)return;
+                var _g=games.find(function(x){return x.id===_gid;});
+                if(!_g)return;
+                _g.coverUrl=finalCover;
+                if(_plats.length===1){_g.activePlatform=_plats[0];_g.platformCovers=_g.platformCovers||{};_g.platformCovers[_plats[0]]=finalCover;}
+                if(finalCover.indexOf(COVERS_URL)!==0&&COVERS_URL){
+                    uploadCoverToServer(finalCover,_gid).then(function(local){
+                        var _g2=games.find(function(x){return x.id===_gid;});
+                        if(_g2){_g2.coverUrl=local||finalCover;if(local){_g2.coverCustom=true;if(_g2.activePlatform&&_g2.platformCovers)_g2.platformCovers[_g2.activePlatform]=local;}save();refreshViews();}
+                    }).catch(function(){save();refreshViews();});
+                }else{save();refreshViews();}
+            }).catch(function(){});
+        }else{
+            // Varias plataformas seleccionadas: cada una es una edición distinta, buscamos su propia portada oficial.
+            Promise.all(_plats.map(function(p){return fetchPlatformCover(lastRawgId,p,_name).catch(function(){return null;});})).then(function(covers){
+                var _g=games.find(function(x){return x.id===_gid;});if(!_g)return;
+                _g.platformCovers=_g.platformCovers||{};
+                var firstCover=null,firstPlat=null;
+                for(var i=0;i<_plats.length;i++){
+                    if(covers[i]){_g.platformCovers[_plats[i]]=covers[i];if(!firstCover){firstCover=covers[i];firstPlat=_plats[i];}}
+                }
+                var finalCover=firstCover||_existingCover;
+                if(finalCover){_g.coverUrl=finalCover;_g.activePlatform=firstPlat||_plats[0];}
+                save();refreshViews();
+                if(finalCover&&finalCover.indexOf(COVERS_URL)!==0&&COVERS_URL){
+                    uploadCoverToServer(finalCover,_gid).then(function(local){
+                        var _g2=games.find(function(x){return x.id===_gid;});
+                        if(_g2&&local){_g2.coverUrl=local;_g2.coverCustom=true;if(_g2.activePlatform)_g2.platformCovers[_g2.activePlatform]=local;save();refreshViews();}
+                    }).catch(function(){});
+                }
+            });
+        }
     }else if(data.coverUrl&&data.coverUrl.indexOf(COVERS_URL)!==0){
         var _gidE=editingId;
         uploadCoverToServer(data.coverUrl,_gidE).then(function(local){
@@ -5846,6 +5954,30 @@ function openGameDetail(rawgId,fromLib,libraryGameId){
         if(lg){renderGDLibOnly(lg,content);}
         else{content.innerHTML='<div class="gd-loading">Error al cargar</div>';}
     });
+}
+function _setPlatformCover(g,url){
+    if(!g||!url)return;
+    var p=g.activePlatform||(g.platform||'').split(',')[0].trim();
+    if(p){g.platformCovers=g.platformCovers||{};g.platformCovers[p]=url;}
+}
+async function selectGamePlatformCover(id,platform){
+    var g=games.find(function(x){return x.id===id;});if(!g)return;
+    g.activePlatform=platform;
+    if(!g.platformCovers)g.platformCovers={};
+    if(g.platformCovers[platform]){
+        g.coverUrl=g.platformCovers[platform];
+        save();openSheet(id);refreshViews();
+        return;
+    }
+    openSheet(id);
+    var cover=await fetchPlatformCover(g.rawgId||null,platform,g.name).catch(function(){return null;});
+    if(!cover)return;
+    var g2=games.find(function(x){return x.id===id;});if(!g2||g2.activePlatform!==platform)return;
+    g2.platformCovers[platform]=cover;
+    g2.coverUrl=cover;
+    save();
+    if(document.getElementById('gameSheet').classList.contains('open'))openSheet(id);
+    refreshViews();
 }
 function closeGameDetail(){document.getElementById('gdSheet').classList.remove('open');document.getElementById('gdBackdrop').classList.remove('open');document.body.style.overflow='';gdCurrentData=null;}
 function renderGDLibOnly(g,el){
