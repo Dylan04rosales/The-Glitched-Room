@@ -3965,8 +3965,20 @@ async function renderGestionInvites(){
         }else{
             h+='<div style="text-align:center;color:var(--text3);font-size:0.82rem;padding:1rem 0">No quedan códigos sin usar. Generá más arriba.</div>';
         }
+        h+='<div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border)"><div style="font-size:0.7rem;color:var(--text3);margin-bottom:0.5rem">Si las estadísticas de usuarios aparecen vacías, puede ser que existan cuentas creadas antes de la actualización del sistema de usuarios.</div><button onclick="_migrateLegacyUsers()" style="width:100%;padding:0.55rem;background:none;border:1px dashed rgba(255,255,255,0.15);border-radius:10px;color:var(--text2);font-size:0.78rem;font-weight:600;font-family:inherit;cursor:pointer">🔧 Reparar cuentas antiguas</button></div>';
         box.innerHTML=h;
     }catch(e){box.innerHTML='<div style="text-align:center;color:var(--red);font-size:0.85rem;padding:1.5rem 0">Error: '+escHtml(e.message)+'</div>';}
+}
+async function _migrateLegacyUsers(){
+    try{
+        showToast('Reparando cuentas...','info');
+        var r=await fetch(PROXY_ORIGIN+'/admin/migrate-legacy-users',{method:'POST',headers:_authHeaders()});
+        var d=await r.json();
+        if(!r.ok||!d||!d.ok){showToast((d&&d.error)||'Error al reparar cuentas','error');return;}
+        if(d.note){showToast(d.note,'info');return;}
+        showToast(d.migrated.length+' cuenta'+(d.migrated.length!==1?'s':'')+' reparada'+(d.migrated.length!==1?'s':'')+' · '+d.alreadyOk.length+' ya estaba'+(d.alreadyOk.length!==1?'n':'')+' bien','success');
+        _adminUsernamesCache=null;
+    }catch(e){showToast('Error: '+e.message,'error');}
 }
 async function _generateInvites(count){
     try{
@@ -4092,6 +4104,7 @@ async function _loadTopSearchedGameCard(name){
     }catch(e){box.innerHTML='';}
 }
 var VERSION_HISTORY=[
+    {v:'3.5',d:'Bug arreglado: las estadísticas de usuarios aparecían vacías',items:['Al separar la lista de usuarios en claves individuales (v3.0), las cuentas creadas antes de ese cambio quedaron sin la entrada pública que las estadísticas necesitan para listarlas, así que el panel aparecía vacío','Nuevo botón "🔧 Reparar cuentas antiguas" que copia esas cuentas viejas a la clave nueva sin tocar contraseñas ni ningún otro dato']},
     {v:'3.4',d:'Carrusel de "Juegos en esta colección" dentro de la ficha',items:['Si un juego de tu biblioteca se llama tipo "God of War Collection" o "God of War Saga" (o tiene "colección"/"collection"/"saga" en el nombre), su ficha ahora muestra un carrusel con los demás juegos de esa colección, arriba de "Mi reseña" y "Notas privadas"','Los juegos del carrusel que ya tenés muestran el cartel "En biblioteca"; los que no tenés muestran un botón "+" para agregarlos directo, sin salir de la ficha a buscar de nuevo']},
     {v:'3.3',d:'Peso por plataforma y tarjetas de saga con opción de agregar',items:['Nuevo campo "Peso" (admin) en Datos: se puede cargar cuánto pesa el juego en cada plataforma en la que está disponible; en la ficha se muestra el peso de la plataforma que tengas activa (cambia junto con la portada al tocar un chip de plataforma)','"Ver juegos de la saga" ahora muestra los resultados como tarjetas iguales a las de Inicio/Explorar (portada, título, año) en vez de una grilla simple','Los juegos de la saga que ya tenés en biblioteca muestran el cartel "En biblioteca" arriba de la portada; los que no tenés muestran un botón "+" que abre el formulario para agregarlos directo, sin salir a buscar el juego de nuevo']},
     {v:'3.2',d:'Ediciones y versiones de un mismo juego unificadas en una sola ficha',items:['Cuando agregás un juego con varias plataformas seleccionadas (ej: PS3, PS4, Xbox 360, Java, Bedrock), ahora se busca y guarda una portada oficial distinta para cada una, en vez de una sola compartida','En la ficha del juego, si tiene más de una plataforma, aparecen como chips tocables debajo del título; al tocar una se muestra su portada correspondiente (Premium Edition, Enhanced Edition, Java Edition, etc.), sin salir de la ficha ni duplicar el juego en la biblioteca','Subir una foto, pegar una URL, elegir del picker o fijar una portada como personalizada ahora la guarda para la plataforma/edición que tengas activa en ese momento, sin pisar las portadas de las demás']},
