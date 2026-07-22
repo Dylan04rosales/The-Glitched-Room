@@ -4104,6 +4104,7 @@ async function _loadTopSearchedGameCard(name){
     }catch(e){box.innerHTML='';}
 }
 var VERSION_HISTORY=[
+    {v:'3.6',d:'Etiqueta "Pertenece a" y detección de saga más precisa',items:['Cualquier juego que forme parte de una colección o saga en IGDB (no solo los que se llaman "Collection" o "Saga") ahora muestra en su ficha a qué colección/saga pertenece, arriba de "Mi reseña" y "Notas privadas"','Se corrigió la detección: antes se mezclaba la colección puntual (ej: la saga de 5 juegos de PS3) con el franchise completo (todos los God of War, incluyendo spin-offs y reboots), lo que traía juegos de más; ahora se prioriza siempre la colección precisa y el franchise amplio solo se usa como último recurso si no hay una colección puntual']},
     {v:'3.5',d:'Bug arreglado: las estadísticas de usuarios aparecían vacías',items:['Al separar la lista de usuarios en claves individuales (v3.0), las cuentas creadas antes de ese cambio quedaron sin la entrada pública que las estadísticas necesitan para listarlas, así que el panel aparecía vacío','Nuevo botón "🔧 Reparar cuentas antiguas" que copia esas cuentas viejas a la clave nueva sin tocar contraseñas ni ningún otro dato']},
     {v:'3.4',d:'Carrusel de "Juegos en esta colección" dentro de la ficha',items:['Si un juego de tu biblioteca se llama tipo "God of War Collection" o "God of War Saga" (o tiene "colección"/"collection"/"saga" en el nombre), su ficha ahora muestra un carrusel con los demás juegos de esa colección, arriba de "Mi reseña" y "Notas privadas"','Los juegos del carrusel que ya tenés muestran el cartel "En biblioteca"; los que no tenés muestran un botón "+" para agregarlos directo, sin salir de la ficha a buscar de nuevo']},
     {v:'3.3',d:'Peso por plataforma y tarjetas de saga con opción de agregar',items:['Nuevo campo "Peso" (admin) en Datos: se puede cargar cuánto pesa el juego en cada plataforma en la que está disponible; en la ficha se muestra el peso de la plataforma que tengas activa (cambia junto con la portada al tocar un chip de plataforma)','"Ver juegos de la saga" ahora muestra los resultados como tarjetas iguales a las de Inicio/Explorar (portada, título, año) en vez de una grilla simple','Los juegos de la saga que ya tenés en biblioteca muestran el cartel "En biblioteca" arriba de la portada; los que no tenés muestran un botón "+" que abre el formulario para agregarlos directo, sin salir a buscar el juego de nuevo']},
@@ -4597,7 +4598,7 @@ function openSheet(id){
 
     if(g.customLink)h+='<div class="sheet-section"><div class="sheet-section-title">Enlace</div><a class="sheet-link" href="'+escHtml(g.customLink)+'" target="_blank" rel="noopener"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> '+escHtml(g.customLink.replace(/^https?:\/\//,'').substring(0,40))+'</a></div>';
 
-    if(/\b(collection|colecci[oó]n|saga)\b/i.test(g.name))h+='<div class="sheet-section" id="sheetCollectionSection"><div class="sheet-section-title">Juegos en esta colección</div><div class="carousel" id="sheetCollectionBox"><div style="color:var(--text3);font-size:0.8rem;padding:0.5rem 0">Buscando...</div></div></div>';
+    h+='<div class="sheet-section" id="sheetCollectionSection" style="display:none"><div id="sheetSagaLabel"></div><div id="sheetCollectionTitle" class="sheet-section-title" style="display:none">Juegos en esta colección</div><div class="carousel" id="sheetCollectionBox"></div></div>';
     if(g.review)h+='<div class="sheet-section"><div class="sheet-section-title">Mi reseña</div><div class="sheet-notes">'+escHtml(g.review)+'</div></div>';
     if(g.notes)h+='<div class="sheet-section"><div class="sheet-section-title">Notas privadas</div><div class="sheet-notes">'+escHtml(g.notes)+'</div></div>';
 
@@ -4612,20 +4613,30 @@ function openSheet(id){
     document.getElementById('sheetBackdrop').classList.add('open');
     document.getElementById('gameSheet').classList.add('open');
     loadSheetRawgInfo(g);
-    if(document.getElementById('sheetCollectionBox'))loadSheetCollectionCarousel(g);
+    loadSheetCollectionCarousel(g);
 }
 async function loadSheetCollectionCarousel(g){
-    var box=document.getElementById('sheetCollectionBox');if(!box)return;
-    var res=await _fetchIgdbSagaGames(g.name).catch(function(){return{error:'fetch-failed'};});
-    var box2=document.getElementById('sheetCollectionBox');
     var section=document.getElementById('sheetCollectionSection');
-    if(!box2)return;
-    if(res.error||!res.list||!res.list.length){
-        if(section)section.style.display='none';
-        return;
-    }
+    var labelEl=document.getElementById('sheetSagaLabel');
+    var titleEl=document.getElementById('sheetCollectionTitle');
+    var box=document.getElementById('sheetCollectionBox');
+    if(!section||!box)return;
+    window._sheetCollectionReqId=(window._sheetCollectionReqId||0)+1;
+    var myReqId=window._sheetCollectionReqId;
+    var res=await _fetchIgdbSagaGames(g.name).catch(function(){return{error:'fetch-failed'};});
+    if(myReqId!==window._sheetCollectionReqId)return;
+    section=document.getElementById('sheetCollectionSection');
+    labelEl=document.getElementById('sheetSagaLabel');
+    titleEl=document.getElementById('sheetCollectionTitle');
+    box=document.getElementById('sheetCollectionBox');
+    if(!section||!box)return;
+    if(res.error||!res.list||!res.list.length){section.style.display='none';return;}
+    section.style.display='';
+    if(res.sagaName){labelEl.innerHTML='<div class="sheet-section-title">Pertenece a</div><div class="sheet-notes" style="margin-bottom:0.6rem">'+escHtml(res.sagaName)+'</div>';}
+    else{labelEl.innerHTML='';}
     var list=res.list.filter(function(x){return x.name.toLowerCase()!==g.name.toLowerCase();});
-    if(!list.length){if(section)section.style.display='none';return;}
+    if(!list.length){titleEl.style.display='none';box.innerHTML='';if(!res.sagaName){section.style.display='none';}return;}
+    titleEl.style.display='';
     var plusSvg='<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
     var h='';
     for(var i=0;i<list.length;i++){
@@ -4640,7 +4651,7 @@ async function loadSheetCollectionCarousel(g){
         var img=cover?'<img src="'+cover+'" loading="lazy" style="object-fit:cover" referrerpolicy="no-referrer" alt="">':'<div class="cover-placeholder" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:800;color:rgba(255,255,255,0.15)">'+escHtml(getInitials(item.name))+'</div>';
         h+='<div class="rec-card"><div class="rec-card-img">'+img+ownedBadge+addBtn+'</div><div class="rec-card-title">'+escHtml(item.name)+'</div><div class="rec-card-meta">'+(yr||'')+'</div></div>';
     }
-    box2.innerHTML=h;
+    box.innerHTML=h;
     _logSagaSearch(g.name,list.map(function(x){return x.name;}));
 }
 function loadSheetRawgInfo(g){
@@ -5494,7 +5505,7 @@ async function _fetchIgdbSagaGames(name){
     var auth=await getIGDBToken();
     if(!auth)return{error:'no-igdb'};
     var q=cleanSearchName(name).replace(/"/g,'');
-    var searchBody='search "'+q+'"; fields name,collection.id,collections.id,collections.name,franchises.id,franchises.name; limit 8;';
+    var searchBody='search "'+q+'"; fields name,collection.id,collection.name,collections.id,collections.name,franchises.id,franchises.name; limit 8;';
     var r1=await fetch(PROXY_ORIGIN+'/igdb/games',{method:'POST',headers:{'Client-ID':auth.cid,'Authorization':'Bearer '+auth.token},body:searchBody});
     if(!r1.ok)return{error:'not-found'};
     var candidates=await r1.json();
@@ -5506,18 +5517,21 @@ async function _fetchIgdbSagaGames(name){
     var collId=found.collection&&found.collection.id;
     var collectionIds=(found.collections||[]).map(function(c){return c.id;});
     var franchiseIds=(found.franchises||[]).map(function(f){return f.id;});
-    var whereClauses=[];
-    if(collId)whereClauses.push('collection = '+collId);
-    if(collectionIds.length)whereClauses.push('collections = ('+collectionIds.join(',')+')');
-    if(franchiseIds.length)whereClauses.push('franchises = ('+franchiseIds.join(',')+')');
+    // La colección (collection/collections) es un agrupamiento preciso (ej: la saga puntual de 5 juegos).
+    // El franchise es mucho más amplio (toda la marca, incluye spin-offs/móviles/reboots) y solo se usa si no hay colección.
+    var preciseClauses=[];
+    if(collId)preciseClauses.push('collection = '+collId);
+    if(collectionIds.length)preciseClauses.push('collections = ('+collectionIds.join(',')+')');
+    var whereClauses=preciseClauses.length?preciseClauses:(franchiseIds.length?['franchises = ('+franchiseIds.join(',')+')']:[]);
     if(!whereClauses.length)return{error:'no-saga'};
+    var sagaName=(found.collection&&found.collection.name)||(found.collections&&found.collections[0]&&found.collections[0].name)||(found.franchises&&found.franchises[0]&&found.franchises[0].name)||'';
     var listBody='fields name,cover.image_id,first_release_date,platforms.name; where ('+whereClauses.join(' | ')+'); limit 24;';
     var r2=await fetch(PROXY_ORIGIN+'/igdb/games',{method:'POST',headers:{'Client-ID':auth.cid,'Authorization':'Bearer '+auth.token},body:listBody});
     if(!r2.ok)return{error:'fetch-failed'};
     var list=(await r2.json())||[];
     list.sort(function(a,b){return(a.first_release_date||0)-(b.first_release_date||0);});
     if(!list.length)return{error:'no-saga'};
-    return{list:list};
+    return{list:list,sagaName:sagaName};
 }
 async function viewGameSaga(name){
     var old=document.getElementById('sagaViewOverlay');if(old)old.remove();
