@@ -87,17 +87,6 @@ Busca en Steam, IGDB, SteamGridDB, TheGamesDB, Wikipedia y RAWG, en ese orden de
 </details>
 
 <details>
-<summary><b>🛠️ Panel de administrador</b></summary>
-<br>
-
-- Detección de duplicados y portadas masivas
-- Estadísticas de todos los usuarios
-- Rankings de sagas y juegos más buscados / más agregados
-- Sistema de invitaciones para controlar el crecimiento
-
-</details>
-
-<details>
 <summary><b>🎲 Y algunas yapas</b></summary>
 <br>
 
@@ -148,7 +137,7 @@ Sin build step, sin framework, sin `npm install`. HTML/CSS/JS puro a propósito 
 
 ## Roadmap
 
-El historial completo de versiones vive dentro de la app, en **Gestión → Historial**. Algunas ideas para más adelante:
+Este proyecto está en desarrollo activo. Algunas ideas para más adelante:
 
 - [ ] Reseñas visibles para amigos, no solo para uno mismo
 - [ ] Más fuentes de portadas oficiales para consolas sin API pública
