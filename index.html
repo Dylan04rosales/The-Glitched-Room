@@ -4104,6 +4104,7 @@ async function _loadTopSearchedGameCard(name){
     }catch(e){box.innerHTML='';}
 }
 var VERSION_HISTORY=[
+    {v:'3.7',d:'Bug arreglado: juegos independientes aparecían como si fueran una colección',items:['La búsqueda en IGDB a veces sustituía el juego exacto por otro resultado parecido en el nombre (ej: una edición especial) solo porque ese otro sí tenía datos de colección, haciendo que juegos totalmente independientes mostraran "Pertenece a" por error','Ahora siempre se usa primero el juego con el nombre exacto (tenga o no colección), y solo se recurre a otro resultado si no hay ninguna coincidencia exacta']},
     {v:'3.6',d:'Etiqueta "Pertenece a" y detección de saga más precisa',items:['Cualquier juego que forme parte de una colección o saga en IGDB (no solo los que se llaman "Collection" o "Saga") ahora muestra en su ficha a qué colección/saga pertenece, arriba de "Mi reseña" y "Notas privadas"','Se corrigió la detección: antes se mezclaba la colección puntual (ej: la saga de 5 juegos de PS3) con el franchise completo (todos los God of War, incluyendo spin-offs y reboots), lo que traía juegos de más; ahora se prioriza siempre la colección precisa y el franchise amplio solo se usa como último recurso si no hay una colección puntual']},
     {v:'3.5',d:'Bug arreglado: las estadísticas de usuarios aparecían vacías',items:['Al separar la lista de usuarios en claves individuales (v3.0), las cuentas creadas antes de ese cambio quedaron sin la entrada pública que las estadísticas necesitan para listarlas, así que el panel aparecía vacío','Nuevo botón "🔧 Reparar cuentas antiguas" que copia esas cuentas viejas a la clave nueva sin tocar contraseñas ni ningún otro dato']},
     {v:'3.4',d:'Carrusel de "Juegos en esta colección" dentro de la ficha',items:['Si un juego de tu biblioteca se llama tipo "God of War Collection" o "God of War Saga" (o tiene "colección"/"collection"/"saga" en el nombre), su ficha ahora muestra un carrusel con los demás juegos de esa colección, arriba de "Mi reseña" y "Notas privadas"','Los juegos del carrusel que ya tenés muestran el cartel "En biblioteca"; los que no tenés muestran un botón "+" para agregarlos directo, sin salir de la ficha a buscar de nuevo']},
@@ -5511,9 +5512,12 @@ async function _fetchIgdbSagaGames(name){
     var candidates=await r1.json();
     if(!candidates.length)return{error:'not-found'};
     var qLower=q.toLowerCase();
+    // Prioridad: SIEMPRE el candidato con nombre exacto, tenga o no datos de saga.
+    // Antes se prefería cualquier candidato CON saga aunque fuera un juego distinto (ej: "X: Director's Cut"
+    // en vez de "X"), lo que hacía aparecer como "colección" a juegos que en realidad son independientes.
+    var exactMatch=candidates.find(function(c){return c.name.toLowerCase()===qLower;});
     var withSaga=candidates.filter(function(c){return c.collection||(c.collections&&c.collections.length)||(c.franchises&&c.franchises.length);});
-    var exact=withSaga.filter(function(c){return c.name.toLowerCase()===qLower;});
-    var found=exact[0]||withSaga[0]||candidates.find(function(c){return c.name.toLowerCase()===qLower;})||candidates[0];
+    var found=exactMatch||withSaga[0]||candidates[0];
     var collId=found.collection&&found.collection.id;
     var collectionIds=(found.collections||[]).map(function(c){return c.id;});
     var franchiseIds=(found.franchises||[]).map(function(f){return f.id;});
