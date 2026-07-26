@@ -2890,7 +2890,7 @@ function _applyProfileSort(list){
     else list.sort(function(a,b){return a.name.localeCompare(b.name);});
     return list;
 }
-var _profileGroupPref=null;
+var _profileGroupPref=true;
 function renderPerfilGrid(){
     const el=document.getElementById('profileGrid');if(!el)return;
     document.querySelectorAll('#perfilScroll .filter-tab[data-pf]').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-pf')===profileFilter);});
@@ -2905,13 +2905,7 @@ function renderPerfilGrid(){
         list=list.filter(function(g){return _normText(g.name).includes(_nq)||_normText(g.saga).includes(_nq);});
     }
     if(!list.length){el.innerHTML='<div class="empty-state" style="min-height:20vh"><p>No hay juegos en esta categoria</p></div>';return;}
-    var isAllFilters=profileFilter==='all'&&formatoFilter==='all'&&platFilter.size===0;
     var sortSel=document.getElementById('profileSortSelect');if(sortSel)sortSel.value=profileSort;
-    if(isAllFilters){
-        _applyProfileSort(list);
-        el.innerHTML=list.map(g=>renderCover(g)).join('');
-        return;
-    }
     if(_profileGroupPref===null){
         el.innerHTML='<div style="grid-column:1/-1;background:var(--bg-surface);border-radius:10px;padding:0.75rem;margin-bottom:0.5rem;display:flex;align-items:center;justify-content:space-between;gap:8px"><span style="font-size:0.78rem;color:var(--text2)">¿Agrupar los resultados por consola?</span><div style="display:flex;gap:6px;flex-shrink:0"><button onclick="_profileGroupPref=true;renderPerfilGrid()" style="padding:0.35rem 0.8rem;background:var(--accent);color:#000;border:none;border-radius:8px;font-size:0.75rem;font-weight:700;font-family:inherit;cursor:pointer">Sí</button><button onclick="_profileGroupPref=false;renderPerfilGrid()" style="padding:0.35rem 0.8rem;background:var(--bg-elevated);color:var(--text2);border:none;border-radius:8px;font-size:0.75rem;font-weight:700;font-family:inherit;cursor:pointer">No</button></div></div>';
         _applyProfileSort(list);
@@ -2939,17 +2933,25 @@ function renderPerfilGrid(){
         }
     }
     let h='<div style="grid-column:1/-1;display:flex;justify-content:flex-end;margin-bottom:0.3rem"><button onclick="_profileGroupPref=false;renderPerfilGrid()" style="background:none;border:none;color:var(--accent);font-size:0.72rem;font-weight:600;cursor:pointer;font-family:inherit">Ver sin agrupar</button></div>';
+    var _chevronSvg='<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition:transform 0.2s"><polyline points="6 9 12 15 18 9"/></svg>';
     for(const brand of brandOrder){
         if(!byBrandPlat[brand])continue;
         const info=BRANDS[brand]||{label:'Otros',color:'#888'};
         for(const[plat,pGames]of Object.entries(byBrandPlat[brand])){
             _applyProfileSort(pGames);
             var _pcc=PLAT_COLORS[plat]||info.color;
-            h+='<div style="grid-column:1/-1;display:flex;align-items:center;gap:8px;padding:0.5rem 0 0.2rem"><div style="width:4px;height:18px;border-radius:2px;background:'+_pcc+'"></div><span style="font-size:0.82rem;font-weight:700;color:var(--text)">'+escHtml(plat)+'</span><span style="font-size:0.68rem;color:var(--text3)">'+pGames.length+'</span></div>';
-            h+=pGames.map(g=>renderCover(g)).join('');
+            var _pk='pg_'+plat;
+            var _open=_profileGroupOpen[_pk]!==false;
+            h+='<div class="grid-full-row" style="grid-column:1/-1;display:flex;align-items:center;gap:8px;padding:0.6rem 0.2rem;cursor:pointer;user-select:none" onclick="_toggleProfileGroup(\''+_pk.replace(/'/g,"\\'")+'\')"><div style="width:4px;height:18px;border-radius:2px;background:'+_pcc+'"></div><span style="font-size:0.82rem;font-weight:700;color:var(--text);flex:1">'+escHtml(plat)+'</span><span style="font-size:0.68rem;color:var(--text3)">'+pGames.length+'</span><span style="color:var(--text3);display:flex;transform:rotate('+(_open?'0':'-90')+'deg)">'+_chevronSvg+'</span></div>';
+            if(_open)h+=pGames.map(g=>renderCover(g)).join('');
         }
     }
     el.innerHTML=h;
+}
+var _profileGroupOpen={};
+function _toggleProfileGroup(key){
+    _profileGroupOpen[key]=_profileGroupOpen[key]===false;
+    renderPerfilGrid();
 }
 var _ratingsSort='best';
 function renderRatingsTab(){
@@ -4104,6 +4106,8 @@ async function _loadTopSearchedGameCard(name){
     }catch(e){box.innerHTML='';}
 }
 var VERSION_HISTORY=[
+    {v:'4.0',d:'Las agrupaciones por consola en Perfil ahora son plegables',items:['Cada grupo de consola en Perfil es ahora una barra desplegable: tocás el nombre de la consola y se abre o se cierra mostrando/ocultando sus juegos, con una flecha que indica el estado','Cada consola recuerda si la dejaste abierta o cerrada mientras seguís navegando el Perfil']},
+    {v:'3.9',d:'Los juegos del Perfil ahora se agrupan por consola por defecto',items:['La agrupación por consola ya existía, pero solo se activaba si tenías algún filtro aplicado; en la vista principal del Perfil (sin filtros) siempre se mostraba la lista plana','Ahora la agrupación por consola queda activada por defecto en cualquier vista del Perfil; se puede desactivar con "Ver sin agrupar" en cualquier momento']},
     {v:'3.8',d:'Bug arreglado: "God of War Saga" y otros paquetes seguían trayendo demasiados juegos',items:['Productos como "God of War Saga" no son una "colección" en el sentido que se venía chequeando (collection/franchise), sino un paquete/compilación puntual; ese dato vive en un campo distinto de IGDB que no se estaba consultando','Ahora, si el juego es un paquete, se buscan directamente los juegos incluidos en ÉL específicamente, en vez de la colección o el franchise general — para "God of War Saga" esto debería traer justo los juegos que incluye, ni uno más']},
     {v:'3.7',d:'Bug arreglado: juegos independientes aparecían como si fueran una colección',items:['La búsqueda en IGDB a veces sustituía el juego exacto por otro resultado parecido en el nombre (ej: una edición especial) solo porque ese otro sí tenía datos de colección, haciendo que juegos totalmente independientes mostraran "Pertenece a" por error','Ahora siempre se usa primero el juego con el nombre exacto (tenga o no colección), y solo se recurre a otro resultado si no hay ninguna coincidencia exacta']},
     {v:'3.6',d:'Etiqueta "Pertenece a" y detección de saga más precisa',items:['Cualquier juego que forme parte de una colección o saga en IGDB (no solo los que se llaman "Collection" o "Saga") ahora muestra en su ficha a qué colección/saga pertenece, arriba de "Mi reseña" y "Notas privadas"','Se corrigió la detección: antes se mezclaba la colección puntual (ej: la saga de 5 juegos de PS3) con el franchise completo (todos los God of War, incluyendo spin-offs y reboots), lo que traía juegos de más; ahora se prioriza siempre la colección precisa y el franchise amplio solo se usa como último recurso si no hay una colección puntual']},
