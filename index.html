@@ -717,6 +717,8 @@ var ALL_PLATS=[
     {label:'Nintendo',items:['Switch','Wii U','3DS','Wii','GameCube','N64','SNES','NES']},
     {label:'PC',items:['PC (Steam)','PC (Epic)','PC (GOG)','PC']}
 ];
+// Orden cronológico real (consola más vieja primero) para agrupar por consola en el Perfil.
+var PLAT_RELEASE_ORDER=['PS1','PS2','PSP','PS3','PS Vita','PS4','PS5','Xbox 360','Xbox One','Xbox Series X|S','NES','SNES','N64','GameCube','Wii','Wii U','3DS','Switch','PC','PC (Steam)','PC (Epic)','PC (GOG)'];
 function renderFormPlatPicker(selected,highlight){
     var sel=(selected||'').split(',').map(function(s){return s.trim()}).filter(Boolean);
     var hl=highlight?new Set(highlight):null;
@@ -2937,7 +2939,14 @@ function renderPerfilGrid(){
     for(const brand of brandOrder){
         if(!byBrandPlat[brand])continue;
         const info=BRANDS[brand]||{label:'Otros',color:'#888'};
-        for(const[plat,pGames]of Object.entries(byBrandPlat[brand])){
+        var _platsSorted=Object.keys(byBrandPlat[brand]).sort(function(a,b){
+            var ia=PLAT_RELEASE_ORDER.indexOf(a);if(ia<0)ia=999;
+            var ib=PLAT_RELEASE_ORDER.indexOf(b);if(ib<0)ib=999;
+            return ia-ib||a.localeCompare(b);
+        });
+        for(var _psi=0;_psi<_platsSorted.length;_psi++){
+            var plat=_platsSorted[_psi];
+            var pGames=byBrandPlat[brand][plat];
             _applyProfileSort(pGames);
             var _pcc=PLAT_COLORS[plat]||info.color;
             var _pk='pg_'+plat;
@@ -4106,6 +4115,7 @@ async function _loadTopSearchedGameCard(name){
     }catch(e){box.innerHTML='';}
 }
 var VERSION_HISTORY=[
+    {v:'4.1',d:'Las consolas en Perfil ahora se ordenan por generación',items:['Las barras de consola en Perfil aparecían en el orden en que se agregaban los juegos, sin ningún criterio; ahora van en orden cronológico real: PS1→PS2→PS3→PS4→PS5, Xbox 360→Xbox One→Series X|S, y así con Nintendo','Dentro de cada consola los juegos ya se ordenaban alfabéticamente por defecto (se mantiene igual)']},
     {v:'4.0',d:'Las agrupaciones por consola en Perfil ahora son plegables',items:['Cada grupo de consola en Perfil es ahora una barra desplegable: tocás el nombre de la consola y se abre o se cierra mostrando/ocultando sus juegos, con una flecha que indica el estado','Cada consola recuerda si la dejaste abierta o cerrada mientras seguís navegando el Perfil']},
     {v:'3.9',d:'Los juegos del Perfil ahora se agrupan por consola por defecto',items:['La agrupación por consola ya existía, pero solo se activaba si tenías algún filtro aplicado; en la vista principal del Perfil (sin filtros) siempre se mostraba la lista plana','Ahora la agrupación por consola queda activada por defecto en cualquier vista del Perfil; se puede desactivar con "Ver sin agrupar" en cualquier momento']},
     {v:'3.8',d:'Bug arreglado: "God of War Saga" y otros paquetes seguían trayendo demasiados juegos',items:['Productos como "God of War Saga" no son una "colección" en el sentido que se venía chequeando (collection/franchise), sino un paquete/compilación puntual; ese dato vive en un campo distinto de IGDB que no se estaba consultando','Ahora, si el juego es un paquete, se buscan directamente los juegos incluidos en ÉL específicamente, en vez de la colección o el franchise general — para "God of War Saga" esto debería traer justo los juegos que incluye, ni uno más']},
