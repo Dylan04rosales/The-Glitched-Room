@@ -763,7 +763,7 @@ let platformChart=null,statusChart=null,formatoChart=null;
 
 var CLOUD_NET='shared';
 var CLOUD_API='cloudflare-kv';
-var _cloudTimer=null;var _cloudExists=false;var _cloudReady=false;
+var _cloudTimer=null;var _cloudExists=false;var _cloudReady=false;var _cloudSaveFailCount=0;
 var _currentUser=null;
 var AUTH_SESSION_KEY='gameVault_session';
 var ADMIN_USERNAME='dylan04rosales';
@@ -815,13 +815,16 @@ async function _dbGet(key){
         return d&&d.value?JSON.parse(d.value):null;
     }catch(e){return null;}
 }
+var _lastDbSetError='';
 async function _dbSet(key,data,exists){
     try{
         var r=await fetch(PROXY_ORIGIN+'/kv/set',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},_authHeaders()),body:JSON.stringify({key:key,value:JSON.stringify(data)})});
-        if(!r.ok)return false;
+        if(!r.ok){_lastDbSetError=(r.status===401||r.status===403)?'session':'http';return false;}
         var d=await r.json();
-        return!!(d&&d.ok);
-    }catch(e){return false;}
+        if(!(d&&d.ok)){_lastDbSetError='server';return false;}
+        _lastDbSetError='';
+        return true;
+    }catch(e){_lastDbSetError='network';return false;}
 }
 async function _dbDelete(key){
     try{
@@ -835,14 +838,12 @@ async function _dbDelete(key){
 var _adminUsernamesCache=null,_adminUsernamesCacheTime=0;
 async function _adminListUsernames(force){
     if(!force&&_adminUsernamesCache&&Date.now()-_adminUsernamesCacheTime<120000)return _adminUsernamesCache;
-    try{
-        var r=await fetch(PROXY_ORIGIN+'/admin/list-usernames',{headers:_authHeaders()});
-        if(!r.ok)return _adminUsernamesCache||[];
-        var d=await r.json();
-        _adminUsernamesCache=(d&&d.usernames)||[];
-        _adminUsernamesCacheTime=Date.now();
-        return _adminUsernamesCache;
-    }catch(e){return _adminUsernamesCache||[];}
+    var r=await fetch(PROXY_ORIGIN+'/admin/list-usernames',{headers:_authHeaders()});
+    var d=await r.json().catch(function(){return null;});
+    if(!r.ok)throw new Error((d&&d.error)||('HTTP '+r.status));
+    _adminUsernamesCache=(d&&d.usernames)||[];
+    _adminUsernamesCacheTime=Date.now();
+    return _adminUsernamesCache;
 }
 var _catalogExists={};
 function _formatCatalog(gamesList){
@@ -1063,7 +1064,15 @@ async function _loadUserLibrary(){
 }
 async function _saveUserLibrary(){
     var key=_cloudKey();
-    _cloudExists=await _dbSet(key,games,_cloudExists);
+    var ok=await _dbSet(key,games,_cloudExists);
+    if(ok){_cloudExists=true;_cloudSaveFailCount=0;}
+    else{
+        _cloudSaveFailCount=(_cloudSaveFailCount||0)+1;
+        if(_cloudSaveFailCount<=3){
+            if(_lastDbSetError==='session')showToast('Tu sesión venció. Cerrá sesión y volvé a entrar para no perder cambios.','error');
+            else showToast('No se pudo guardar en la nube. Revisá tu conexión.','error');
+        }
+    }
     _lastCloudHash=_hashGames();
     _debounceCatalogSync();
 }
@@ -1412,7 +1421,9 @@ async function openAdminStats(){
         _adminRowsCache={total:users.length,online:onlineCount,rows:rows};
         _renderAdminStats(users.length,onlineCount,rows);
     }catch(e){
-        body.innerHTML='<div style="padding:2rem;text-align:center;color:var(--red);font-size:0.82rem">Error cargando estadísticas: '+escHtml(e.message||String(e))+'</div>';
+        var _errMsg2=e.message||String(e);
+        var _isSess2=/sesión/i.test(_errMsg2);
+        body.innerHTML='<div style="padding:2rem;text-align:center;color:var(--red);font-size:0.82rem">Error cargando estadísticas: '+escHtml(_errMsg2)+(_isSess2?'<br><button onclick="doLogout()" style="margin-top:0.75rem;padding:0.5rem 1rem;background:var(--accent);color:#000;border:none;border-radius:8px;font-size:0.78rem;font-weight:700;font-family:inherit;cursor:pointer">Cerrar sesión</button>':'')+'</div>';
     }
 }
 function filterAdminStats(q){
@@ -3959,7 +3970,12 @@ async function renderGestionInvites(){
     try{
         var r=await fetch(PROXY_ORIGIN+'/admin/list-invites',{headers:_authHeaders()});
         var d=await r.json();
-        if(!r.ok||!d||!d.ok){box.innerHTML='<div style="text-align:center;color:var(--red);font-size:0.85rem;padding:1.5rem 0">Error: '+escHtml((d&&d.error)||'no se pudo cargar')+'</div>';return;}
+        if(!r.ok||!d||!d.ok){
+            var _errMsg=(d&&d.error)||'no se pudo cargar';
+            var _isSess=/sesión/i.test(_errMsg);
+            box.innerHTML='<div style="text-align:center;color:var(--red);font-size:0.85rem;padding:1.5rem 0">Error: '+escHtml(_errMsg)+(_isSess?'<br><button onclick="doLogout()" style="margin-top:0.75rem;padding:0.5rem 1rem;background:var(--accent);color:#000;border:none;border-radius:8px;font-size:0.78rem;font-weight:700;font-family:inherit;cursor:pointer">Cerrar sesión</button>':'')+'</div>';
+            return;
+        }
         var h='<div style="font-size:0.8rem;color:var(--text2);margin-bottom:0.75rem">'+d.unused.length+' código'+(d.unused.length!==1?'s':'')+' sin usar · '+d.usedCount+' ya usado'+(d.usedCount!==1?'s':'')+' · '+d.total+' en total</div>';
         h+='<div style="display:flex;gap:8px;margin-bottom:1rem">';
         h+='<button onclick="_generateInvites(20)" style="flex:1;padding:0.6rem;background:var(--accent);color:#000;border:none;border-radius:10px;font-size:0.82rem;font-weight:700;font-family:inherit;cursor:pointer">Generar 20 códigos</button>';
@@ -4115,6 +4131,8 @@ async function _loadTopSearchedGameCard(name){
     }catch(e){box.innerHTML='';}
 }
 var VERSION_HISTORY=[
+    {v:'4.3',d:'Estadísticas e Invitaciones mostraban un error confuso con sesión vencida',items:['Si tu sesión guardada ya no era válida en el servidor, Estadísticas e Invitaciones mostraban "Solo el administrador puede..." aunque sí fueras admin — el mensaje no aclaraba que el problema era la sesión, no el permiso','Ahora avisa claramente "Tu sesión no es válida o venció. Cerrá sesión y volvé a entrar." con un botón directo para cerrar sesión ahí mismo','Las estadísticas de usuarios también fallaban en silencio (mostraban vacío sin ningún aviso) cuando esto pasaba; ahora muestran el error real']},
+    {v:'4.2',d:'Aviso cuando falla el guardado en la nube (antes fallaba en silencio)',items:['Si guardar un cambio en el servidor fallaba (sesión vencida, sin señal, u otro motivo), la app igual mostraba "Guardado" porque el cambio quedaba en el dispositivo, sin avisar que no llegó a la nube — podía parecer que "no se guardó" al revisar desde otro lado','Ahora avisa específicamente si la sesión venció (pidiendo cerrar sesión y volver a entrar) o si hubo un problema de conexión']},
     {v:'4.1',d:'Las consolas en Perfil ahora se ordenan por generación',items:['Las barras de consola en Perfil aparecían en el orden en que se agregaban los juegos, sin ningún criterio; ahora van en orden cronológico real: PS1→PS2→PS3→PS4→PS5, Xbox 360→Xbox One→Series X|S, y así con Nintendo','Dentro de cada consola los juegos ya se ordenaban alfabéticamente por defecto (se mantiene igual)']},
     {v:'4.0',d:'Las agrupaciones por consola en Perfil ahora son plegables',items:['Cada grupo de consola en Perfil es ahora una barra desplegable: tocás el nombre de la consola y se abre o se cierra mostrando/ocultando sus juegos, con una flecha que indica el estado','Cada consola recuerda si la dejaste abierta o cerrada mientras seguís navegando el Perfil']},
     {v:'3.9',d:'Los juegos del Perfil ahora se agrupan por consola por defecto',items:['La agrupación por consola ya existía, pero solo se activaba si tenías algún filtro aplicado; en la vista principal del Perfil (sin filtros) siempre se mostraba la lista plana','Ahora la agrupación por consola queda activada por defecto en cualquier vista del Perfil; se puede desactivar con "Ver sin agrupar" en cualquier momento']},
