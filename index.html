@@ -809,7 +809,7 @@ function _validateUsername(u){
 function _authHeaders(){return(_currentUser&&_currentUser.token)?{'Authorization':'Bearer '+_currentUser.token}:{};}
 async function _dbGet(key){
     try{
-        var r=await fetch(PROXY_ORIGIN+'/kv/get?key='+encodeURIComponent(key));
+        var r=await fetch(PROXY_ORIGIN+'/kv/get?key='+encodeURIComponent(key),{headers:_authHeaders()});
         if(!r.ok)return null;
         var d=await r.json();
         return d&&d.value?JSON.parse(d.value):null;
@@ -1767,7 +1767,7 @@ async function handleCoverUpload(input){
 if(!input.files||!input.files[0])return;
 var g=games.find(function(x){return x.id===datosGameId});if(!g)return;
 var file=input.files[0];
-if(file.size>10*1024*1024){showToast('Imagen muy grande (máx 10MB)','error');return;}
+if(file.size>5*1024*1024){showToast('Imagen muy grande (máx 5MB)','error');return;}
 showToast('Subiendo portada...','info');
 var url=await uploadCoverFile(file,g.id);
 if(url){g.coverUrl=url;g.coverCustom=true;_setPlatformCover(g,url);save();showToast('Portada subida','success');refreshViews();
@@ -3191,20 +3191,14 @@ async function sendFriendRequest(uname){
     var fromInput=false;
     if(!uname){var inp=document.getElementById('addFriendInput');if(!inp)return;uname=inp.value.trim().toLowerCase();fromInput=true;}
     if(!uname)return;
-    if(uname===_currentUser.username){showToast('No podés agregarte a vos mismo','error');return;}
-    var target=await _dbGet('useridx_'+uname);
-    if(!target){showToast('No existe ningún usuario con ese nombre','error');return;}
-    var friends=await _dbGet('friends_'+_currentUser.username)||[];
-    if(friends.indexOf(uname)>=0){showToast('Ya es tu amigo','info');if(fromInput)document.getElementById('addFriendInput').value='';return;}
-    var sentReqs=await _dbGet('friend_requests_sent_'+_currentUser.username)||[];
-    if(sentReqs.indexOf(uname)>=0){showToast('Ya le mandaste una solicitud','info');if(fromInput)document.getElementById('addFriendInput').value='';return;}
-    var theirIncoming=await _dbGet('friend_requests_'+uname)||[];
-    if(theirIncoming.indexOf(_currentUser.username)<0){theirIncoming.push(_currentUser.username);await _dbSet('friend_requests_'+uname,theirIncoming,true);}
-    sentReqs.push(uname);
-    await _dbSet('friend_requests_sent_'+_currentUser.username,sentReqs,true);
-    showToast('Solicitud enviada a '+uname,'success');
-    if(fromInput)document.getElementById('addFriendInput').value='';
-    renderAmigos();
+    try{
+        var r=await fetch(PROXY_ORIGIN+'/friends/request',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},_authHeaders()),body:JSON.stringify({to:uname})});
+        var d=await r.json();
+        if(!r.ok||!d||!d.ok){showToast((d&&d.error)||'Error al enviar la solicitud','error');return;}
+        showToast('Solicitud enviada a '+uname,'success');
+        if(fromInput)document.getElementById('addFriendInput').value='';
+        renderAmigos();
+    }catch(e){showToast('Error: '+e.message,'error');}
 }
 async function openFriendRequests(){
     document.getElementById('adminStatsModal').classList.add('open');
@@ -3231,39 +3225,23 @@ async function openFriendRequests(){
     }
 }
 async function respondFriendRequest(fromUser,accept){
-    var incoming=await _dbGet('friend_requests_'+_currentUser.username)||[];
-    incoming=incoming.filter(function(u){return u!==fromUser;});
-    await _dbSet('friend_requests_'+_currentUser.username,incoming,true);
-    var theirSent=await _dbGet('friend_requests_sent_'+fromUser)||[];
-    theirSent=theirSent.filter(function(u){return u!==_currentUser.username;});
-    await _dbSet('friend_requests_sent_'+fromUser,theirSent,true);
-    if(accept){
-        var myFriends=await _dbGet('friends_'+_currentUser.username)||[];
-        if(myFriends.indexOf(fromUser)<0)myFriends.push(fromUser);
-        await _dbSet('friends_'+_currentUser.username,myFriends,true);
-        var theirFriends=await _dbGet('friends_'+fromUser)||[];
-        if(theirFriends.indexOf(_currentUser.username)<0)theirFriends.push(_currentUser.username);
-        await _dbSet('friends_'+fromUser,theirFriends,true);
-    }
-    var theirNotifs=await _dbGet('friend_notifs_'+fromUser)||[];
-    theirNotifs.push({type:accept?'accepted':'rejected',from:_currentUser.username,ts:Date.now()});
-    await _dbSet('friend_notifs_'+fromUser,theirNotifs,true);
-    showToast(accept?'Ahora son amigos':'Solicitud rechazada','success');
-    openFriendRequests();
-    renderAmigos();
+    try{
+        var r=await fetch(PROXY_ORIGIN+'/friends/respond',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},_authHeaders()),body:JSON.stringify({from:fromUser,accept:accept})});
+        var d=await r.json();
+        if(!r.ok||!d||!d.ok){showToast((d&&d.error)||'Error al responder la solicitud','error');return;}
+        showToast(accept?'Ahora son amigos':'Solicitud rechazada','success');
+        openFriendRequests();
+        renderAmigos();
+    }catch(e){showToast('Error: '+e.message,'error');}
 }
 async function removeFriend(uname){
     if(!confirm('¿Quitar a '+uname+' de tus amigos?'))return;
-    var friends=await _dbGet('friends_'+_currentUser.username)||[];
-    friends=friends.filter(function(f){return f!==uname;});
-    await _dbSet('friends_'+_currentUser.username,friends,true);
-    var theirFriends=await _dbGet('friends_'+uname)||[];
-    theirFriends=theirFriends.filter(function(f){return f!==_currentUser.username;});
-    await _dbSet('friends_'+uname,theirFriends,true);
-    var theirNotifs=await _dbGet('friend_notifs_'+uname)||[];
-    theirNotifs.push({type:'removed',from:_currentUser.username,ts:Date.now()});
-    await _dbSet('friend_notifs_'+uname,theirNotifs,true);
-    renderAmigos();
+    try{
+        var r=await fetch(PROXY_ORIGIN+'/friends/remove',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},_authHeaders()),body:JSON.stringify({friend:uname})});
+        var d=await r.json();
+        if(!r.ok||!d||!d.ok){showToast((d&&d.error)||'Error al quitar el amigo','error');return;}
+        renderAmigos();
+    }catch(e){showToast('Error: '+e.message,'error');}
 }
 function shareProfile(){
     var link=location.origin+location.pathname+'?perfil='+encodeURIComponent(_currentUser.username);
@@ -3968,7 +3946,7 @@ async function renderGestionInvites(){
     var box=document.getElementById('gestionInviteBox');if(!box)return;
     box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">Cargando invitaciones...</div>';
     try{
-        var r=await fetch(PROXY_ORIGIN+'/admin/list-invites',{headers:_authHeaders()});
+        var r=await fetch(PROXY_ORIGIN+'/admin/list-invite-links',{headers:_authHeaders()});
         var d=await r.json();
         if(!r.ok||!d||!d.ok){
             var _errMsg=(d&&d.error)||'no se pudo cargar';
@@ -3976,25 +3954,76 @@ async function renderGestionInvites(){
             box.innerHTML='<div style="text-align:center;color:var(--red);font-size:0.85rem;padding:1.5rem 0">Error: '+escHtml(_errMsg)+(_isSess?'<br><button onclick="doLogout()" style="margin-top:0.75rem;padding:0.5rem 1rem;background:var(--accent);color:#000;border:none;border-radius:8px;font-size:0.78rem;font-weight:700;font-family:inherit;cursor:pointer">Cerrar sesión</button>':'')+'</div>';
             return;
         }
-        var h='<div style="font-size:0.8rem;color:var(--text2);margin-bottom:0.75rem">'+d.unused.length+' código'+(d.unused.length!==1?'s':'')+' sin usar · '+d.usedCount+' ya usado'+(d.usedCount!==1?'s':'')+' · '+d.total+' en total</div>';
+        var h='<div style="font-size:0.72rem;color:var(--text3);margin-bottom:0.6rem">Un enlace de invitación sirve para varios registros a la vez. Compartilo y cuando se agoten los usos, aumentalos o creá uno nuevo.</div>';
         h+='<div style="display:flex;gap:8px;margin-bottom:1rem">';
-        h+='<button onclick="_generateInvites(20)" style="flex:1;padding:0.6rem;background:var(--accent);color:#000;border:none;border-radius:10px;font-size:0.82rem;font-weight:700;font-family:inherit;cursor:pointer">Generar 20 códigos</button>';
-        h+='<button onclick="_generateInvites(100)" style="flex:1;padding:0.6rem;background:var(--bg-surface);color:var(--text2);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;font-family:inherit;cursor:pointer">Generar 100</button>';
+        h+='<input type="text" id="newInviteLinkName" placeholder="Nombre (ej: YouTube)" style="flex:2;padding:0.55rem;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:var(--bg-surface);color:var(--text);font-size:0.82rem;font-family:inherit">';
+        h+='<input type="number" id="newInviteLinkUses" placeholder="Usos" value="150" min="1" style="flex:1;padding:0.55rem;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:var(--bg-surface);color:var(--text);font-size:0.82rem;font-family:inherit">';
         h+='</div>';
-        if(d.unused.length){
-            h+='<button onclick="_copyAllInvites()" style="width:100%;padding:0.55rem;background:none;border:1px dashed rgba(255,255,255,0.15);border-radius:10px;color:var(--text2);font-size:0.78rem;font-weight:600;font-family:inherit;cursor:pointer;margin-bottom:0.75rem">📋 Copiar todos los códigos sin usar</button>';
-            h+='<div id="gestionInviteList" style="background:var(--bg-surface);border-radius:12px;padding:0.4rem 0.8rem;max-height:340px;overflow-y:auto">';
-            for(var i=0;i<d.unused.length;i++){
-                h+='<div style="display:flex;justify-content:space-between;align-items:center;padding:0.4rem 0;'+(i<d.unused.length-1?'border-bottom:1px solid var(--border)':'')+'"><span style="font-family:monospace;font-size:0.85rem;font-weight:700;letter-spacing:0.05em">'+escHtml(d.unused[i])+'</span></div>';
-            }
-            h+='</div>';
-            window._pendingInviteCodes=d.unused;
+        h+='<button onclick="_createInviteLink()" style="width:100%;padding:0.65rem;background:var(--accent);color:#000;border:none;border-radius:10px;font-size:0.85rem;font-weight:700;font-family:inherit;cursor:pointer;margin-bottom:1.1rem">Crear enlace de invitación</button>';
+        if(d.truncated)h+='<div style="font-size:0.68rem;color:var(--orange);margin-bottom:0.6rem">Mostrando los primeros 40 (hay más, pero se cortó para no sobrecargar el servidor). Borrá alguno viejo si ya no lo usás.</div>';
+        if(!d.links.length){
+            h+='<div style="text-align:center;color:var(--text3);font-size:0.82rem;padding:1rem 0">Todavía no creaste ningún enlace.</div>';
         }else{
-            h+='<div style="text-align:center;color:var(--text3);font-size:0.82rem;padding:1rem 0">No quedan códigos sin usar. Generá más arriba.</div>';
+            for(var i=0;i<d.links.length;i++){
+                var l=d.links[i];
+                var url=location.origin+location.pathname+'?invite='+encodeURIComponent(l.code);
+                var pct=l.maxUses?Math.min(100,Math.round((l.usedCount/l.maxUses)*100)):0;
+                var agotado=l.usedCount>=l.maxUses;
+                h+='<div style="background:var(--bg-surface);border-radius:12px;padding:0.75rem;margin-bottom:0.6rem">';
+                h+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:0.4rem"><span style="font-weight:700;font-size:0.85rem">'+escHtml(l.name)+'</span><span style="font-size:0.68rem;color:'+(agotado?'var(--red)':'var(--text3)')+'">'+l.usedCount+' / '+l.maxUses+' usos</span></div>';
+                h+='<div style="height:4px;border-radius:2px;background:rgba(255,255,255,0.08);margin-bottom:0.6rem;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+(agotado?'var(--red)':'var(--accent)')+'"></div></div>';
+                h+='<div style="font-family:monospace;font-size:0.78rem;color:var(--text2);word-break:break-all;margin-bottom:0.6rem">'+escHtml(url)+'</div>';
+                h+='<div style="display:flex;gap:6px">';
+                h+='<button onclick="_copyInviteLink(\''+escHtml(url).replace(/'/g,"\\'")+'\')" style="flex:1;padding:0.5rem;background:rgba(255,255,255,0.06);border:none;border-radius:8px;color:var(--text2);font-size:0.72rem;font-weight:600;font-family:inherit;cursor:pointer">📋 Copiar</button>';
+                h+='<button onclick="_editInviteLink(\''+escHtml(l.code)+'\',\''+escHtml(l.name).replace(/'/g,"\\'")+'\','+l.maxUses+')" style="flex:1;padding:0.5rem;background:rgba(255,255,255,0.06);border:none;border-radius:8px;color:var(--text2);font-size:0.72rem;font-weight:600;font-family:inherit;cursor:pointer">✏️ Editar</button>';
+                h+='<button onclick="_deleteInviteLink(\''+escHtml(l.code)+'\')" style="flex:1;padding:0.5rem;background:rgba(239,68,68,0.1);border:none;border-radius:8px;color:var(--red);font-size:0.72rem;font-weight:600;font-family:inherit;cursor:pointer">Borrar</button>';
+                h+='</div></div>';
+            }
         }
         h+='<div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border)"><div style="font-size:0.7rem;color:var(--text3);margin-bottom:0.5rem">Si las estadísticas de usuarios aparecen vacías, puede ser que existan cuentas creadas antes de la actualización del sistema de usuarios.</div><button onclick="_migrateLegacyUsers()" style="width:100%;padding:0.55rem;background:none;border:1px dashed rgba(255,255,255,0.15);border-radius:10px;color:var(--text2);font-size:0.78rem;font-weight:600;font-family:inherit;cursor:pointer">🔧 Reparar cuentas antiguas</button></div>';
         box.innerHTML=h;
     }catch(e){box.innerHTML='<div style="text-align:center;color:var(--red);font-size:0.85rem;padding:1.5rem 0">Error: '+escHtml(e.message)+'</div>';}
+}
+async function _createInviteLink(){
+    var nameInp=document.getElementById('newInviteLinkName');
+    var usesInp=document.getElementById('newInviteLinkUses');
+    var name=nameInp?nameInp.value.trim():'';
+    var maxUses=parseInt(usesInp?usesInp.value:'150',10)||150;
+    if(!name){showToast('Ponele un nombre al enlace','error');return;}
+    try{
+        var r=await fetch(PROXY_ORIGIN+'/admin/create-invite-link',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},_authHeaders()),body:JSON.stringify({name:name,maxUses:maxUses})});
+        var d=await r.json();
+        if(!r.ok||!d||!d.ok){showToast((d&&d.error)||'Error al crear el enlace','error');return;}
+        showToast('Enlace creado','success');
+        renderGestionInvites();
+    }catch(e){showToast('Error: '+e.message,'error');}
+}
+function _copyInviteLink(url){
+    navigator.clipboard.writeText(url).then(function(){showToast('Enlace copiado','success');}).catch(function(){prompt('Copiá este enlace:',url);});
+}
+async function _editInviteLink(code,currentName,currentMax){
+    var newName=prompt('Nombre del enlace:',currentName);
+    if(newName===null)return;
+    var newMaxStr=prompt('Cantidad de usos:',currentMax);
+    if(newMaxStr===null)return;
+    var newMax=parseInt(newMaxStr,10);
+    if(!newMax||newMax<1){showToast('Cantidad de usos inválida','error');return;}
+    try{
+        var r=await fetch(PROXY_ORIGIN+'/admin/update-invite-link',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},_authHeaders()),body:JSON.stringify({code:code,name:newName.trim(),maxUses:newMax})});
+        var d=await r.json();
+        if(!r.ok||!d||!d.ok){showToast((d&&d.error)||'Error al editar el enlace','error');return;}
+        showToast('Enlace actualizado','success');
+        renderGestionInvites();
+    }catch(e){showToast('Error: '+e.message,'error');}
+}
+async function _deleteInviteLink(code){
+    if(!confirm('¿Borrar este enlace de invitación? Ya no va a servir para registrarse.'))return;
+    try{
+        var r=await fetch(PROXY_ORIGIN+'/admin/delete-invite-link',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},_authHeaders()),body:JSON.stringify({code:code})});
+        var d=await r.json();
+        if(!r.ok||!d||!d.ok){showToast((d&&d.error)||'Error al borrar el enlace','error');return;}
+        renderGestionInvites();
+    }catch(e){showToast('Error: '+e.message,'error');}
 }
 async function _migrateLegacyUsers(){
     try{
@@ -4006,21 +4035,6 @@ async function _migrateLegacyUsers(){
         showToast(d.migrated.length+' cuenta'+(d.migrated.length!==1?'s':'')+' reparada'+(d.migrated.length!==1?'s':'')+' · '+d.alreadyOk.length+' ya estaba'+(d.alreadyOk.length!==1?'n':'')+' bien','success');
         _adminUsernamesCache=null;
     }catch(e){showToast('Error: '+e.message,'error');}
-}
-async function _generateInvites(count){
-    try{
-        var r=await fetch(PROXY_ORIGIN+'/admin/generate-invites',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},_authHeaders()),body:JSON.stringify({count:count})});
-        var d=await r.json();
-        if(!r.ok||!d||!d.ok){showToast((d&&d.error)||'Error al generar invitaciones','error');return;}
-        showToast(d.codes.length+' códigos generados','success');
-        renderGestionInvites();
-    }catch(e){showToast('Error: '+e.message,'error');}
-}
-function _copyAllInvites(){
-    var codes=window._pendingInviteCodes||[];
-    if(!codes.length)return;
-    var text=codes.join('\n');
-    navigator.clipboard.writeText(text).then(function(){showToast('Códigos copiados al portapapeles','success');}).catch(function(){prompt('Copiá estos códigos:',text);});
 }
 async function renderGestionSagas(){
     var box=document.getElementById('gestionSagasBox');if(!box)return;
@@ -4131,6 +4145,10 @@ async function _loadTopSearchedGameCard(name){
     }catch(e){box.innerHTML='';}
 }
 var VERSION_HISTORY=[
+    {v:'4.7',d:'Bug arreglado: Invitaciones podía romperse con "Too many API requests"',items:['Si se habían acumulado muchos códigos de invitación viejos (o muchos enlaces nuevos), el panel podía superar el límite de 50 pedidos por invocación que impone el plan gratuito de Cloudflare, mostrando un error críptico y dejando el panel en blanco','Ahora el listado siempre se corta en un máximo seguro (40) y avisa si hay más de los que muestra, en vez de romperse']},
+    {v:'4.6',d:'Nuevo sistema de invitación: un enlace con muchos usos, en vez de cientos de códigos',items:['En Gestión → Invitaciones ahora se crea un enlace con nombre propio (ej: "YouTube") y una cantidad de usos (ej: 150), en vez de generar cientos de códigos individuales de un solo uso','La cantidad de usos y el nombre del enlace se pueden editar en cualquier momento, incluso después de creado','Compartir el enlace ya precarga el código de invitación al abrir la app, así la persona no tiene que copiarlo/pegarlo a mano','Cada enlace muestra cuántos usos lleva gastados con una barra de progreso; se pueden crear varios enlaces (para distintas fuentes) o borrar los que ya no sirvan','El sistema viejo de códigos individuales sigue funcionando por compatibilidad para los códigos que ya estaban repartidos, pero ya no se generan más desde acá']},
+    {v:'4.5',d:'Limpieza de código muerto y límites en subida de portadas',items:['Se eliminó una función que quedó sin usar tras el rediseño de "Ver saga" con tarjetas','La subida de portadas a imgbb ahora rechaza imágenes de más de 5MB y tiene un límite de 20 subidas por hora por cuenta, para no agotar la cuota gratuita compartida']},
+    {v:'4.4',d:'Auditoría de seguridad: 3 vulnerabilidades corregidas',items:['Se eliminaron 3 endpoints viejos del login (ya no los usaba nadie) que permitían a cualquiera anular el bloqueo por intentos fallidos de CUALQUIER usuario, anulando la protección contra fuerza bruta','El sistema de amigos ya no permite que un usuario logueado escriba directo en la lista de amigos/solicitudes de otra persona; ahora pasa por endpoints dedicados (/friends/request, /friends/respond, /friends/remove) que validan cada paso','"Notas privadas" y "Mi reseña" dejaron de ser legibles por cualquiera que supiera tu nombre de usuario; ahora solo las ve el dueño de la cuenta o un admin']},
     {v:'4.3',d:'Estadísticas e Invitaciones mostraban un error confuso con sesión vencida',items:['Si tu sesión guardada ya no era válida en el servidor, Estadísticas e Invitaciones mostraban "Solo el administrador puede..." aunque sí fueras admin — el mensaje no aclaraba que el problema era la sesión, no el permiso','Ahora avisa claramente "Tu sesión no es válida o venció. Cerrá sesión y volvé a entrar." con un botón directo para cerrar sesión ahí mismo','Las estadísticas de usuarios también fallaban en silencio (mostraban vacío sin ningún aviso) cuando esto pasaba; ahora muestran el error real']},
     {v:'4.2',d:'Aviso cuando falla el guardado en la nube (antes fallaba en silencio)',items:['Si guardar un cambio en el servidor fallaba (sesión vencida, sin señal, u otro motivo), la app igual mostraba "Guardado" porque el cambio quedaba en el dispositivo, sin avisar que no llegó a la nube — podía parecer que "no se guardó" al revisar desde otro lado','Ahora avisa específicamente si la sesión venció (pidiendo cerrar sesión y volver a entrar) o si hubo un problema de conexión']},
     {v:'4.1',d:'Las consolas en Perfil ahora se ordenan por generación',items:['Las barras de consola en Perfil aparecían en el orden en que se agregaban los juegos, sin ningún criterio; ahora van en orden cronológico real: PS1→PS2→PS3→PS4→PS5, Xbox 360→Xbox One→Series X|S, y así con Nintendo','Dentro de cada consola los juegos ya se ordenaban alfabéticamente por defecto (se mantiene igual)']},
@@ -5619,28 +5637,8 @@ async function viewGameSaga(name){
         h+='</div>';
         h+='<button onclick="document.getElementById(\'sagaViewOverlay\').remove()" style="margin-top:1rem;width:100%;padding:0.6rem;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:var(--text3);font-size:0.8rem;font-weight:600;font-family:inherit;cursor:pointer">Cerrar</button>';
         box.innerHTML=h;
-        window._sagaResults=list;
         _logSagaSearch(name,list.map(function(g){return g.name;}));
     }catch(e){box.innerHTML='<div style="text-align:center;color:var(--text3);font-size:0.85rem;padding:1.5rem 0">Error al buscar la saga</div>';}
-}
-function addSagaGame(idx){
-    var g=window._sagaResults&&window._sagaResults[idx];if(!g)return;
-    var ov=document.getElementById('sagaViewOverlay');if(ov)ov.remove();
-    var pv=document.getElementById('gamePreviewOverlay');if(pv)pv.remove();
-    var plats=(g.platforms||[]).map(function(p){return p.name;}).filter(Boolean).join(', ');
-    var cover=g.cover&&g.cover.image_id?'https://images.igdb.com/igdb/image/upload/t_1080p/'+g.cover.image_id+'.jpg':'';
-    filterPlatforms(plats);
-    document.getElementById('fName').value=g.name;
-    document.getElementById('fCover').value=cover;
-    document.getElementById('fSaga').value='';
-    fetchSteamCover(g.name).then(function(sc){if(sc){document.getElementById('fCover').value=sc;lastRawgCover=sc;}});
-    var ryEl=document.getElementById('fReleaseYear');if(ryEl)ryEl.value=g.first_release_date?new Date(g.first_release_date*1000).getFullYear():0;
-    document.getElementById('fPlatform').value='';
-    lastRawgId=null;lastRawgCover=cover||null;
-    if(!document.getElementById('addModal').classList.contains('open'))openAddModalPrefilled();
-    document.getElementById('fPlatformPicker').scrollIntoView({behavior:'smooth',block:'center'});
-    var sagaField=document.getElementById('fSaga');
-    if(sagaField&&!sagaField.value.trim()){var guess=extractSagaFromName(g.name);if(guess)sagaField.value=guess;}
 }
 function selectRAWG(el){
     var name=el.dataset.name,cover=el.dataset.cover,mc=el.dataset.mc,plats=el.dataset.platforms;
@@ -6366,6 +6364,14 @@ window.addEventListener('focus',function(){_cloudPoll();});
 setInterval(function(){if(!document.hidden)_cloudPoll();},60000);
 var _sharedProfile=new URLSearchParams(location.search).get('perfil');
 if(_sharedProfile)setTimeout(function(){viewSharedProfile(_sharedProfile.toLowerCase())},400);
+var _inviteFromUrl=new URLSearchParams(location.search).get('invite');
+if(_inviteFromUrl&&!_currentUser){
+    setTimeout(function(){
+        _showAuthForm('register');
+        var inp=document.getElementById('authRegInvite');
+        if(inp)inp.value=_inviteFromUrl.toUpperCase();
+    },300);
+}
 history.replaceState({view:'inicio'},'',location.href);
 if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}
 history.pushState({view:currentView||'inicio'},'',location.href);
