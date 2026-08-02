@@ -604,6 +604,7 @@
             </div>
             <div id="settingsExportSection" style="border-top:1px solid rgba(255,255,255,0.06);margin:1rem 0;padding-top:1rem">
                 <div class="fg"><label>Exportar (JSON)</label><button type="button" class="btn-cancel" style="width:100%;text-align:center" onclick="exportData()">Descargar backup</button></div>
+                <div class="fg"><label>Exportar (CSV, para Excel/Sheets)</label><button type="button" class="btn-cancel" style="width:100%;text-align:center" onclick="exportCSV()">Descargar CSV</button></div>
                 <div class="fg"><label>Importar (JSON)</label><div class="import-zone" id="importZone" onclick="document.getElementById('importFile').click()">Arrastra un JSON o toca para seleccionar</div><input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)"></div>
             </div>
         </div>
@@ -671,7 +672,7 @@
                 <div style="text-align:center;margin-top:1rem;font-size:0.78rem;color:var(--text3)">No tenés cuenta? <button onclick="_showAuthForm('register')" style="background:none;border:none;color:var(--accent);font-weight:600;cursor:pointer;font-family:inherit;font-size:0.78rem">Registrate</button></div>
             </div>
             <div id="authFormRegister" style="display:none">
-                <div class="fg"><label>Código de invitación</label><input type="text" id="authRegInvite" placeholder="Código que te compartieron" autocomplete="off" style="text-transform:uppercase"></div>
+                <div class="fg"><label>Código de invitación</label><input type="text" id="authRegInvite" placeholder="Código que te compartieron" autocomplete="off"></div>
                 <div class="fg"><label>Nombre de usuario</label><div style="position:relative"><input type="text" id="authRegUser" placeholder="Elegí un nombre de usuario" autocomplete="off" oninput="_checkUsernameAvail()"><span id="authRegUserStatus" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:1rem"></span></div><div id="authRegUserMsg" style="font-size:0.65rem;min-height:1em;margin-top:2px"></div></div>
                 <div class="fg"><label>Contraseña</label><input type="password" id="authRegPass" placeholder="Letras, números y símbolos" autocomplete="new-password" oninput="_checkRegPass()"><div id="authRegPassMsg" style="font-size:0.65rem;min-height:1em;margin-top:2px"></div></div>
                 <div class="fg"><label>Confirmar contraseña</label><input type="password" id="authRegPass2" placeholder="Repetí la contraseña" autocomplete="new-password" oninput="_checkRegPass()"><div id="authRegPass2Msg" style="font-size:0.65rem;min-height:1em;margin-top:2px"></div></div>
@@ -1266,7 +1267,9 @@ function renderOnboardingStep1(){
         {label:'Nintendo',items:['Switch','Wii U','3DS','Wii','GameCube','N64','SNES','NES'],color:'#e60012'},
         {label:'PC',items:['PC'],color:'#ff8833'}
     ];
-    var h='<div style="font-size:1.05rem;font-weight:800;margin-bottom:0.3rem">¿Qué consolas tenés?</div>';
+    var h='<div style="font-size:1.15rem;font-weight:800;margin-bottom:0.2rem">¡Bienvenido a The Glitched Room! 🎮</div>';
+    h+='<div style="color:var(--text2);font-size:0.8rem;margin-bottom:0.9rem">Acá armás tu catálogo de videojuegos: qué tenés, qué estás jugando, qué ya terminaste y qué querés comprar — con portadas y datos reales, no una lista más.</div>';
+    h+='<div style="font-size:1.05rem;font-weight:800;margin-bottom:0.3rem">¿Qué consolas tenés?</div>';
     h+='<div style="color:var(--text2);font-size:0.8rem;margin-bottom:1rem">Con esto te vamos a sugerir juegos populares para armar tu biblioteca, y personalizar tus recomendaciones.</div>';
     for(var gi=0;gi<ALL_CON.length;gi++){var gr=ALL_CON[gi];
         h+='<div style="width:100%;margin-bottom:0.5rem"><div style="font-size:0.62rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">'+gr.label+'</div><div style="display:flex;flex-wrap:wrap;gap:6px">';
@@ -1625,6 +1628,12 @@ function renderInicio(){
         if(_platGames.length){
             var _platCards='';for(var _pi=0;_pi<Math.min(_platGames.length,15);_pi++)_platCards+=renderCover(_platGames[_pi]);
             h+='<div class="section"><div class="section-header"><div class="section-title">🏆 Platinados</div><span class="section-count">'+_platGames.length+'</span><button class="section-link" onclick="openGridView(\'platinum\')">Ver todo</button></div>'+wrapCarousel('<div class="carousel">'+_platCards+'</div>')+'</div>';
+        }
+        var _thisYear=new Date().getFullYear();
+        var _upcoming=games.filter(function(g){return g.status==='Quiero'&&g.year&&g.year>=_thisYear;}).sort(function(a,b){return a.year-b.year||a.name.localeCompare(b.name);});
+        if(_upcoming.length){
+            var _upCards='';for(var _ui=0;_ui<Math.min(_upcoming.length,15);_ui++)_upCards+=renderCover(_upcoming[_ui]);
+            h+='<div class="section"><div class="section-header"><div class="section-title">🗓️ Próximos lanzamientos en tu lista</div><span class="section-count">'+_upcoming.length+'</span></div>'+wrapCarousel('<div class="carousel">'+_upCards+'</div>')+'</div>';
         }
         const recent=games.filter(g=>g.addedDate).sort((a,b)=>new Date(b.addedDate)-new Date(a.addedDate)).slice(0,10);
         if(recent.length){
@@ -3128,6 +3137,8 @@ async function renderAmigos(){
         var incoming=await _dbGet('friend_requests_'+_currentUser.username)||[];
         var now=Date.now();
         var rows=[];
+        var activity=[];
+        var _cutoff=now-14*86400000;
         for(var i=0;i<friends.length;i++){
             var fu=friends[i];
             var ud=await _dbGet('useridx_'+fu);
@@ -3135,9 +3146,16 @@ async function renderAmigos(){
             var glist=Array.isArray(lib)?lib:[];
             var pres=await _dbGet('presence_'+fu);
             var online=pres&&pres.ts&&(now-pres.ts)<420000;
-            rows.push({username:(ud&&ud.displayName)||fu,usernameKey:fu,games:glist.length,online:online});
+            var fDisplay=(ud&&ud.displayName)||fu;
+            rows.push({username:fDisplay,usernameKey:fu,games:glist.length,online:online});
+            for(var gi=0;gi<glist.length;gi++){var fg=glist[gi];
+                if(fg.addedDate){var t1=new Date(fg.addedDate).getTime();if(t1>=_cutoff)activity.push({friend:fDisplay,friendKey:fu,game:fg.name,type:'added',ts:t1});}
+                if(fg.status==='Terminado'&&fg.finishDate){var t2=new Date(fg.finishDate).getTime();if(t2>=_cutoff)activity.push({friend:fDisplay,friendKey:fu,game:fg.name,type:'finished',ts:t2});}
+            }
         }
-        _renderAmigosList(rows,incoming.length);
+        activity.sort(function(a,b){return b.ts-a.ts;});
+        activity=activity.slice(0,15);
+        _renderAmigosList(rows,incoming.length,activity);
         _updateFriendReqBadge(incoming.length);
     }catch(e){
         el.innerHTML='<div style="padding:2rem;text-align:center;color:var(--red);font-size:0.82rem">Error: '+escHtml((e&&e.message)||String(e))+'</div>';
@@ -3163,11 +3181,23 @@ async function _checkFriendNotifications(){
     }
     await _dbSet('friend_notifs_'+_currentUser.username,[],true);
 }
-function _renderAmigosList(rows,reqCount){
+function _renderAmigosList(rows,reqCount,activity){
     var el=document.getElementById('amigosContent');if(!el)return;
     var h='<div style="padding:0 1rem 0.5rem"><div style="display:flex;gap:6px"><input type="text" id="addFriendInput" placeholder="Nombre de usuario..." style="flex:1;padding:0.5rem 0.8rem;border-radius:9px;border:1px solid var(--glass-border);background:var(--bg-surface);color:var(--text);font-size:0.8rem;font-family:inherit" onkeydown="if(event.key===\'Enter\'){event.preventDefault();sendFriendRequest()}"><button onclick="sendFriendRequest()" style="padding:0.5rem 1rem;background:var(--accent);color:#000;border:none;border-radius:9px;font-size:0.8rem;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap">Agregar</button>';
     h+='<button onclick="openFriendRequests()" style="padding:0.5rem 0.9rem;background:var(--bg-surface);color:var(--text2);border:1px solid var(--glass-border);border-radius:9px;font-size:0.8rem;font-weight:700;font-family:inherit;cursor:pointer;position:relative;white-space:nowrap">Solicitudes'+(reqCount>0?' <span style="display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 3px;border-radius:8px;background:var(--red);color:#fff;font-size:0.65rem;font-weight:800;margin-left:3px">'+reqCount+'</span>':'')+'</button>';
     h+='</div><button onclick="shareProfile()" style="margin-top:0.5rem;width:100%;padding:0.45rem;background:none;border:1px dashed var(--glass-border);border-radius:9px;color:var(--text3);font-size:0.75rem;font-weight:600;font-family:inherit;cursor:pointer">🔗 Compartir mi perfil</button></div>';
+    if(activity&&activity.length){
+        h+='<div style="padding:0 1rem 0.5rem"><div style="font-size:0.72rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.4rem">Actividad reciente</div>';
+        h+='<div style="background:var(--bg-surface);border-radius:12px;padding:0.2rem 0.8rem">';
+        for(var ai=0;ai<activity.length;ai++){var act=activity[ai];
+            var _icon=act.type==='finished'?'✅':'➕';
+            var _txt=act.type==='finished'?'terminó':'agregó';
+            var _days=Math.max(0,Math.floor((Date.now()-act.ts)/86400000));
+            var _when=_days===0?'hoy':_days===1?'ayer':'hace '+_days+' días';
+            h+='<div style="display:flex;align-items:center;gap:8px;padding:0.5rem 0;'+(ai<activity.length-1?'border-bottom:1px solid var(--border)':'')+'"><span>'+_icon+'</span><span style="font-size:0.8rem;flex:1;min-width:0"><b>'+escHtml(act.friend)+'</b> '+_txt+' <b>'+escHtml(act.game)+'</b></span><span style="font-size:0.65rem;color:var(--text3);white-space:nowrap">'+_when+'</span></div>';
+        }
+        h+='</div></div>';
+    }
     h+='<div style="padding:0 1rem">';
     if(!rows.length){
         h+='<div style="padding:1.5rem 0;text-align:center;color:var(--text3);font-size:0.82rem">Todavía no tenés amigos. Buscá por su nombre de usuario para mandarle una solicitud.</div>';
@@ -3694,34 +3724,19 @@ async function detectMissingSagas(){
 async function detectMissingYears(){
     var btn=document.getElementById('detectYearsBtn');
     if(btn){btn.disabled=true;btn.textContent='Detectando...';}
-    var key=gk('rawg');if(!key){showToast('Configura la API key de RAWG','info');if(btn)btn.disabled=false;return;}
     var missing=games.filter(function(g){return g.name&&!g.releaseYear;});
     var found=0;
     for(var i=0;i<missing.length;i+=3){
         var chunk=missing.slice(i,i+3);
         var results=await Promise.all(chunk.map(function(g){
-            if(g.rawgId){
-                return fetch('https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games/'+g.rawgId+'?key='+encodeURIComponent(key))
-                    .then(function(r){return r.ok?r.json():null;})
-                    .catch(function(){return null;});
-            } else {
-                return fetch('https://the-glitched-room-biblioteca.dylanivanrosales.workers.dev/rawg/games?key='+encodeURIComponent(key)+'&search='+encodeURIComponent(g.name)+'&page_size=5')
-                    .then(function(r){return r.ok?r.json():null;})
-                    .then(function(d){
-                        if(!d||!d.results||!d.results.length)return null;
-                        var exact=d.results.find(function(r){return r.name.toLowerCase()===g.name.toLowerCase();});
-                        return exact||d.results[0];
-                    })
-                    .catch(function(){return null;});
-            }
+            return _igdbPost('igdb_search',{query:g.name,limit:'5'}).catch(function(){return null;});
         }));
         for(var j=0;j<chunk.length;j++){
             var d=results[j];
-            if(d&&d.released){
-                var yr=parseInt(d.released.split('-')[0])||0;
-                if(yr){chunk[j].releaseYear=yr;found++;}
-                if(d.id&&!chunk[j].rawgId)chunk[j].rawgId=d.id;
-            }
+            if(!d||!d.results||!d.results.length)continue;
+            var gLower=chunk[j].name.toLowerCase();
+            var match=d.results.find(function(r){return r.name&&r.name.toLowerCase()===gLower;})||d.results[0];
+            if(match&&match.year){chunk[j].releaseYear=match.year;found++;}
         }
         if(btn)btn.textContent='Detectando... '+(i+chunk.length)+'/'+missing.length;
     }
@@ -3924,7 +3939,8 @@ function renderStats(){
 var gestionFilter='duplicados';
 function renderGestion(){
     var el=document.getElementById('gestionContent');if(!el)return;
-    var h='<div class="filter-tabs" style="padding:0.5rem 0.75rem">';
+    var h='<div id="gestionWriteStats" style="padding:0.5rem 0.75rem 0;font-size:0.7rem;color:var(--text3)">Cargando uso del servidor...</div>';
+    h+='<div class="filter-tabs" style="padding:0.5rem 0.75rem">';
     h+='<button class="filter-tab'+(gestionFilter==='duplicados'?' active':'')+'" onclick="gestionFilter=\'duplicados\';renderGestion()">Duplicados</button>';
     h+='<button class="filter-tab'+(gestionFilter==='portadas'?' active':'')+'" onclick="gestionFilter=\'portadas\';renderGestion()">Portadas</button>';
     h+='<button class="filter-tab'+(gestionFilter==='sinportada'?' active':'')+'" onclick="gestionFilter=\'sinportada\';renderGestion()">Sin portada</button>';
@@ -3937,10 +3953,23 @@ function renderGestion(){
     else if(gestionFilter==='portadas'){h+=renderGestionPortadas();}
     else if(gestionFilter==='revisar'){h+=renderGestionRevisar();}
     else if(gestionFilter==='historial'){h+=renderGestionHistorial();}
-    else if(gestionFilter==='sagas'){h+='<div id="gestionSagasBox" style="padding:0 0.75rem 1rem">Cargando...</div>';el.innerHTML=h;renderGestionSagas();return;}
-    else if(gestionFilter==='invitaciones'){h+='<div id="gestionInviteBox" style="padding:0 0.75rem 1rem">Cargando...</div>';el.innerHTML=h;renderGestionInvites();return;}
+    else if(gestionFilter==='sagas'){h+='<div id="gestionSagasBox" style="padding:0 0.75rem 1rem">Cargando...</div>';el.innerHTML=h;renderGestionSagas();_loadWriteStats();return;}
+    else if(gestionFilter==='invitaciones'){h+='<div id="gestionInviteBox" style="padding:0 0.75rem 1rem">Cargando...</div>';el.innerHTML=h;renderGestionInvites();_loadWriteStats();return;}
     else{h+=renderGestionSinPortada();}
     el.innerHTML=h;
+    _loadWriteStats();
+}
+async function _loadWriteStats(){
+    var box=document.getElementById('gestionWriteStats');if(!box)return;
+    try{
+        var r=await fetch(PROXY_ORIGIN+'/admin/write-stats',{headers:_authHeaders()});
+        var d=await r.json();
+        box=document.getElementById('gestionWriteStats');if(!box)return;
+        if(!r.ok||!d||!d.ok){box.innerHTML='';return;}
+        var pct=Math.round((d.today/d.limit)*100);
+        var color=pct>=90?'var(--red)':pct>=60?'var(--orange)':'var(--text3)';
+        box.innerHTML='<span style="color:'+color+'">✍️ '+d.today+' / '+d.limit+' escrituras hoy</span> · ayer: '+d.yesterday+' <span style="opacity:0.7">(plan gratuito de Cloudflare)</span>';
+    }catch(e){box.innerHTML='';}
 }
 async function renderGestionInvites(){
     var box=document.getElementById('gestionInviteBox');if(!box)return;
@@ -3955,10 +3984,9 @@ async function renderGestionInvites(){
             return;
         }
         var h='<div style="font-size:0.72rem;color:var(--text3);margin-bottom:0.6rem">Un enlace de invitación sirve para varios registros a la vez. Compartilo y cuando se agoten los usos, aumentalos o creá uno nuevo.</div>';
-        h+='<div style="display:flex;gap:8px;margin-bottom:1rem">';
-        h+='<input type="text" id="newInviteLinkName" placeholder="Nombre (ej: YouTube)" style="flex:2;padding:0.55rem;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:var(--bg-surface);color:var(--text);font-size:0.82rem;font-family:inherit">';
-        h+='<input type="number" id="newInviteLinkUses" placeholder="Usos" value="150" min="1" style="flex:1;padding:0.55rem;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:var(--bg-surface);color:var(--text);font-size:0.82rem;font-family:inherit">';
-        h+='</div>';
+        h+='<div class="fg" style="margin-bottom:0.5rem"><label style="font-size:0.68rem;color:var(--text3)">Nombre</label><input type="text" id="newInviteLinkName" placeholder="Ej: YouTube" style="width:100%;padding:0.55rem;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:var(--bg-surface);color:var(--text);font-size:0.82rem;font-family:inherit"></div>';
+        h+='<div class="fg" style="margin-bottom:0.5rem"><label style="font-size:0.68rem;color:var(--text3)">Texto del enlace (se ve en la URL)</label><input type="text" id="newInviteLinkCode" placeholder="Ej: 10-usuarios (vacío = se genera solo)" style="width:100%;padding:0.55rem;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:var(--bg-surface);color:var(--text);font-size:0.82rem;font-family:inherit"></div>';
+        h+='<div class="fg" style="margin-bottom:0.8rem"><label style="font-size:0.68rem;color:var(--text3)">Cantidad de usos</label><input type="number" id="newInviteLinkUses" placeholder="Usos" value="150" min="1" style="width:100%;padding:0.55rem;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:var(--bg-surface);color:var(--text);font-size:0.82rem;font-family:inherit"></div>';
         h+='<button onclick="_createInviteLink()" style="width:100%;padding:0.65rem;background:var(--accent);color:#000;border:none;border-radius:10px;font-size:0.85rem;font-weight:700;font-family:inherit;cursor:pointer;margin-bottom:1.1rem">Crear enlace de invitación</button>';
         if(d.truncated)h+='<div style="font-size:0.68rem;color:var(--orange);margin-bottom:0.6rem">Mostrando los primeros 40 (hay más, pero se cortó para no sobrecargar el servidor). Borrá alguno viejo si ya no lo usás.</div>';
         if(!d.links.length){
@@ -3966,7 +3994,7 @@ async function renderGestionInvites(){
         }else{
             for(var i=0;i<d.links.length;i++){
                 var l=d.links[i];
-                var url=location.origin+location.pathname+'?invite='+encodeURIComponent(l.code);
+                var url=location.origin+location.pathname+'#/invite/'+encodeURIComponent(l.code);
                 var pct=l.maxUses?Math.min(100,Math.round((l.usedCount/l.maxUses)*100)):0;
                 var agotado=l.usedCount>=l.maxUses;
                 h+='<div style="background:var(--bg-surface);border-radius:12px;padding:0.75rem;margin-bottom:0.6rem">';
@@ -3986,12 +4014,14 @@ async function renderGestionInvites(){
 }
 async function _createInviteLink(){
     var nameInp=document.getElementById('newInviteLinkName');
+    var codeInp=document.getElementById('newInviteLinkCode');
     var usesInp=document.getElementById('newInviteLinkUses');
     var name=nameInp?nameInp.value.trim():'';
+    var code=codeInp?codeInp.value.trim():'';
     var maxUses=parseInt(usesInp?usesInp.value:'150',10)||150;
     if(!name){showToast('Ponele un nombre al enlace','error');return;}
     try{
-        var r=await fetch(PROXY_ORIGIN+'/admin/create-invite-link',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},_authHeaders()),body:JSON.stringify({name:name,maxUses:maxUses})});
+        var r=await fetch(PROXY_ORIGIN+'/admin/create-invite-link',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},_authHeaders()),body:JSON.stringify({name:name,code:code,maxUses:maxUses})});
         var d=await r.json();
         if(!r.ok||!d||!d.ok){showToast((d&&d.error)||'Error al crear el enlace','error');return;}
         showToast('Enlace creado','success');
@@ -4004,12 +4034,14 @@ function _copyInviteLink(url){
 async function _editInviteLink(code,currentName,currentMax){
     var newName=prompt('Nombre del enlace:',currentName);
     if(newName===null)return;
+    var newCode=prompt('Texto del enlace (lo que se ve en la URL):',code);
+    if(newCode===null)return;
     var newMaxStr=prompt('Cantidad de usos:',currentMax);
     if(newMaxStr===null)return;
     var newMax=parseInt(newMaxStr,10);
     if(!newMax||newMax<1){showToast('Cantidad de usos inválida','error');return;}
     try{
-        var r=await fetch(PROXY_ORIGIN+'/admin/update-invite-link',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},_authHeaders()),body:JSON.stringify({code:code,name:newName.trim(),maxUses:newMax})});
+        var r=await fetch(PROXY_ORIGIN+'/admin/update-invite-link',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},_authHeaders()),body:JSON.stringify({code:code,name:newName.trim(),newCode:newCode.trim(),maxUses:newMax})});
         var d=await r.json();
         if(!r.ok||!d||!d.ok){showToast((d&&d.error)||'Error al editar el enlace','error');return;}
         showToast('Enlace actualizado','success');
@@ -4145,6 +4177,10 @@ async function _loadTopSearchedGameCard(name){
     }catch(e){box.innerHTML='';}
 }
 var VERSION_HISTORY=[
+    {v:'5.1',d:'Bug arreglado: "Detectar sagas" y "Detectar años" fallaban seguido',items:['Los botones "Detectar sagas" y "Detectar años" en Gestión todavía usaban el motor viejo (RAWG), que requería un ID de RAWG guardado en el juego — algo que ya casi ningún juego tiene desde que IGDB pasó a ser el motor principal, así que fallaban en silencio para la mayoría','Ahora ambos usan primero IGDB (mismo motor ya mejorado que usa el resto de la app), con RAWG solo como respaldo; debería identificar muchos más juegos que antes']},
+    {v:'5.0',d:'Varias mejoras: CSV, lanzamientos próximos, actividad de amigos y control de uso del servidor',items:['Nuevo botón "Descargar CSV" en Ajustes, para abrir la biblioteca en Excel/Sheets además del backup JSON','Nueva sección en Inicio "🗓️ Próximos lanzamientos en tu lista" con los juegos de tu wishlist que salen este año o el que viene','Nueva sección "Actividad reciente" en Amigos: qué agregaron o terminaron tus amigos en los últimos 14 días','Gestión ahora muestra cuántas escrituras del plan gratuito de Cloudflare se gastaron hoy (y ayer), para anticipar si te estás por quedar sin margen','Bienvenida más completa en el onboarding para gente que llega por primera vez sin contexto de qué es la app']},
+    {v:'4.9',d:'Bug de seguridad arreglado: se podía entrar sin registrarse',items:['Si estabas en la pantalla de registro y hacías el gesto de "atrás" del celular, la pantalla de login/registro se cerraba igual que cualquier otro panel y dejaba ver la app de fondo sin haber iniciado sesión — se podían agregar juegos pero no hacer login después','Ahora el gesto de atrás no puede saltear el login/registro: si no hay sesión activa, la pantalla de acceso se mantiene']},
+    {v:'4.8',d:'El enlace de invitación ahora tiene un texto elegido por vos, no un código random',items:['Al crear un enlace de invitación ahora se puede elegir el texto que aparece en la URL (ej: "10-usuarios") en vez de un código al azar; si se deja vacío, se genera uno solo','El enlace queda con el formato .../#/invite/tu-texto, mucho más legible para compartir','Ese texto también se puede cambiar después desde "✏️ Editar", junto con el nombre y la cantidad de usos']},
     {v:'4.7',d:'Bug arreglado: Invitaciones podía romperse con "Too many API requests"',items:['Si se habían acumulado muchos códigos de invitación viejos (o muchos enlaces nuevos), el panel podía superar el límite de 50 pedidos por invocación que impone el plan gratuito de Cloudflare, mostrando un error críptico y dejando el panel en blanco','Ahora el listado siempre se corta en un máximo seguro (40) y avisa si hay más de los que muestra, en vez de romperse']},
     {v:'4.6',d:'Nuevo sistema de invitación: un enlace con muchos usos, en vez de cientos de códigos',items:['En Gestión → Invitaciones ahora se crea un enlace con nombre propio (ej: "YouTube") y una cantidad de usos (ej: 150), en vez de generar cientos de códigos individuales de un solo uso','La cantidad de usos y el nombre del enlace se pueden editar en cualquier momento, incluso después de creado','Compartir el enlace ya precarga el código de invitación al abrir la app, así la persona no tiene que copiarlo/pegarlo a mano','Cada enlace muestra cuántos usos lleva gastados con una barra de progreso; se pueden crear varios enlaces (para distintas fuentes) o borrar los que ya no sirvan','El sistema viejo de códigos individuales sigue funcionando por compatibilidad para los códigos que ya estaban repartidos, pero ya no se generan más desde acá']},
     {v:'4.5',d:'Limpieza de código muerto y límites en subida de portadas',items:['Se eliminó una función que quedó sin usar tras el rediseño de "Ver saga" con tarjetas','La subida de portadas a imgbb ahora rechaza imágenes de más de 5MB y tiene un límite de 20 subidas por hora por cuenta, para no agotar la cuota gratuita compartida']},
@@ -4908,6 +4944,10 @@ async function bulkRefreshCovers(){if(!_isAdmin()){showToast('Solo el administra
 }
 
 async function detectSaga(rawgId, gameName){
+    try{
+        var res=await _fetchIgdbSagaGames(gameName);
+        if(res&&res.sagaName)return res.sagaName;
+    }catch{}
     const key=gk('rawg');
     if(key&&rawgId){
         try{
@@ -5970,6 +6010,29 @@ function exportData(){
     const blob=new Blob([JSON.stringify({games,exportDate:new Date().toISOString()},null,2)],{type:'application/json'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='biblioteca-juegos-backup.json';a.click();URL.revokeObjectURL(a.href);showToast('Backup descargado','success');
 }
+function exportCSV(){
+    var cols=['name','platform','status','formato','rating','completion','trophiesEarned','trophiesTotal','platinum','startDate','finishDate','timesCompleted','hoursPlayed','edition','saga'];
+    var headers=['Nombre','Plataforma','Estado','Formato','Rating (1-5)','Progreso %','Trofeos ganados','Trofeos totales','Platinado','Fecha inicio','Fecha fin','Veces completado','Horas jugadas','Edición','Saga'];
+    function esc(v){
+        if(v===undefined||v===null)v='';
+        v=String(v);
+        if(/[",\n]/.test(v))v='"'+v.replace(/"/g,'""')+'"';
+        return v;
+    }
+    var lines=[headers.map(esc).join(',')];
+    for(var i=0;i<games.length;i++){
+        var g=games[i];
+        var row=cols.map(function(c){
+            var v=g[c];
+            if(c==='platinum')v=v?'Sí':'No';
+            return esc(v);
+        });
+        lines.push(row.join(','));
+    }
+    var csv='\uFEFF'+lines.join('\r\n'); // BOM para que Excel detecte UTF-8 bien
+    var blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+    var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='biblioteca-juegos.csv';a.click();URL.revokeObjectURL(a.href);showToast('CSV descargado','success');
+}
 function importData(e){
     const f=e.target.files[0];if(!f)return;
     const r=new FileReader();
@@ -6364,18 +6427,25 @@ window.addEventListener('focus',function(){_cloudPoll();});
 setInterval(function(){if(!document.hidden)_cloudPoll();},60000);
 var _sharedProfile=new URLSearchParams(location.search).get('perfil');
 if(_sharedProfile)setTimeout(function(){viewSharedProfile(_sharedProfile.toLowerCase())},400);
-var _inviteFromUrl=new URLSearchParams(location.search).get('invite');
+var _inviteHashMatch=location.hash.match(/^#\/invite\/(.+)$/i);
+var _inviteFromUrl=_inviteHashMatch?decodeURIComponent(_inviteHashMatch[1]):new URLSearchParams(location.search).get('invite');
 if(_inviteFromUrl&&!_currentUser){
     setTimeout(function(){
         _showAuthForm('register');
         var inp=document.getElementById('authRegInvite');
-        if(inp)inp.value=_inviteFromUrl.toUpperCase();
+        if(inp)inp.value=_inviteFromUrl;
     },300);
 }
 history.replaceState({view:'inicio'},'',location.href);
 if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}
 history.pushState({view:currentView||'inicio'},'',location.href);
 window.addEventListener('popstate',function(e){
+    var authModalEl=document.getElementById('authModal');
+    if(authModalEl&&authModalEl.classList.contains('open')&&!_currentUser){
+        // El login/registro es obligatorio: no se puede "cerrar" con el gesto de atrás sin haber iniciado sesión.
+        history.pushState({view:'inicio'},'',location.href);
+        return;
+    }
     var openOverlay=document.querySelector('.modal-overlay.open, .sheet.open, .gd-sheet.open');
     if(openOverlay){
         openOverlay.classList.remove('open');
